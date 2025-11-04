@@ -1,0 +1,146 @@
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Colors } from '../constants/colors';
+
+interface WelcomeScreenProps {
+  onGoogleSignIn: () => void;
+}
+
+export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onGoogleSignIn }) => {
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.language}>English (US)</Text>
+      </View>
+
+      <View style={styles.logoContainer}>
+        <Text style={styles.logoLines}>///.</Text>
+        <Text style={styles.subtitle}>
+          Create a profile, follow other people's accounts,
+          create your own playlist and much more.
+        </Text>
+      </View>
+
+      <View style={styles.authSection}>
+        <TouchableOpacity style={styles.googleButton} onPress={onGoogleSignIn}>
+          <Text style={styles.googleButtonText}>G</Text>
+          <Text style={styles.googleButtonLabel}>Continue with Google</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.footer}>
+        <Text style={styles.termsText}>
+          By continuing, you agree to AUX's{' '}
+          <Text style={styles.link}>Terms of Service</Text>
+          {'\n'}and{' '}
+          <Text style={styles.link}>Privacy Policy</Text>
+        </Text>
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.white,
+  },
+  header: {
+    padding: 20,
+    paddingTop: 60,
+    alignItems: 'center',
+  },
+  language: {
+    fontSize: 14,
+    color: Colors.darkGray,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    marginTop: 40,
+    marginBottom: 60,
+  },
+  logoLines: {
+    fontSize: 64,
+    fontWeight: 'bold',
+    color: Colors.primary,
+    marginBottom: 20,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: Colors.darkGray,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  authSection: {
+    paddingHorizontal: 30,
+  },
+  authTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.black,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.mediumGray,
+    borderRadius: 25,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginBottom: 15,
+  },
+  googleButtonText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: Colors.primary,
+    marginRight: 15,
+  },
+  googleButtonLabel: {
+    fontSize: 15,
+    color: Colors.black,
+    fontWeight: '500',
+  },
+  appleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.mediumGray,
+    borderRadius: 25,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  appleButtonText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginRight: 15,
+  },
+  appleButtonLabel: {
+    fontSize: 15,
+    color: Colors.black,
+    fontWeight: '500',
+  },
+  termsText: {
+    fontSize: 12,
+    color: Colors.darkGray,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 20,
+  },
+  link: {
+    color: Colors.black,
+    fontWeight: '600',
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 40,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 30,
+  },
+});
