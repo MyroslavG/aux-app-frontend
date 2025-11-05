@@ -2,6 +2,7 @@
   "expo": {
     "name": "aux-app",
     "slug": "aux-app",
+    "scheme": "auxapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,13 +14,15 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.auxapp"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "package": "com.auxapp",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },

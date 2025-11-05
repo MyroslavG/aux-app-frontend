@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
+import { Post } from '../types/api';
 
 interface PostDetailScreenProps {
   route: any;
@@ -11,14 +12,32 @@ interface PostDetailScreenProps {
 export const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navigation }) => {
   const { post } = route?.params || {};
 
-  const mockPost = post || {
-    user: { name: 'wydawww', location: 'Bandung', time: '1 mins ago' },
-    song: { title: 'Blinding Lights', artist: 'The Weeknd', likes: 1500, comments: 500 },
-  };
-
   const showUnderDevelopment = () => {
     Alert.alert('Under Development', 'This feature is coming soon!');
   };
+
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (seconds < 60) return `${seconds}s ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
+  };
+
+  if (!post || !post.user) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <Ionicons name="alert-circle-outline" size={64} color={Colors.primary} />
+        <Text style={styles.errorText}>Post not found</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backToFeedButton}>
+          <Text style={styles.backToFeedText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -29,23 +48,35 @@ export const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navig
 
         <View style={styles.postHeader}>
           <View style={styles.headerRow}>
-            <View style={styles.userInfo}>
-              <View style={styles.avatar} />
+            <TouchableOpacity
+              style={styles.userInfo}
+              onPress={() => navigation.navigate('UserProfile', { username: post.user.username })}
+            >
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {post.user.display_name?.charAt(0).toUpperCase() || post.user.username?.charAt(0).toUpperCase()}
+                </Text>
+              </View>
               <View>
-                <Text style={styles.userName}>{mockPost.user.name}</Text>
+                <Text style={styles.userName}>{post.user.display_name || post.user.username}</Text>
                 <View style={styles.postMeta}>
-                  <Text style={styles.location}>{mockPost.user.location}</Text>
+                  <Text style={styles.location}>@{post.user.username}</Text>
                   <Text style={styles.dot}> · </Text>
-                  <Text style={styles.time}>{mockPost.user.time}</Text>
-                  <Text style={styles.dot}> · </Text>
-                  <Ionicons name="earth" size={12} color={Colors.white} />
+                  <Text style={styles.time}>{formatTimeAgo(post.created_at)}</Text>
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.postImage}>
+          {post.album_art_url ? (
+            <Image source={{ uri: post.album_art_url }} style={styles.albumArt} />
+          ) : (
+            <View style={styles.albumArtPlaceholder}>
+              <Ionicons name="musical-note" size={80} color={Colors.white} />
+            </View>
+          )}
           <View style={styles.playButtonLarge}>
             <Ionicons name="play" size={48} color={Colors.primary} />
           </View>
@@ -63,13 +94,13 @@ export const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navig
             <TouchableOpacity style={styles.actionButton} onPress={showUnderDevelopment}>
               <Ionicons name="heart" size={28} color={Colors.primary} />
             </TouchableOpacity>
-            <Text style={styles.actionCount}>{mockPost.song.likes} Likes</Text>
+            <Text style={styles.actionCount}>Likes</Text>
           </View>
           <View style={styles.leftActions}>
             <TouchableOpacity style={styles.actionButton} onPress={showUnderDevelopment}>
               <Ionicons name="chatbubble" size={24} color={Colors.black} />
             </TouchableOpacity>
-            <Text style={styles.actionCount}>{mockPost.song.comments} Comments</Text>
+            <Text style={styles.actionCount}>Comments</Text>
           </View>
           <View style={styles.rightActions}>
             <TouchableOpacity style={styles.iconButton} onPress={showUnderDevelopment}>
@@ -82,9 +113,18 @@ export const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navig
         </View>
 
         <View style={styles.songInfo}>
-          <Text style={styles.songTitle}>{mockPost.song.title}</Text>
-          <Text style={styles.artistName}>{mockPost.song.artist}</Text>
+          <Text style={styles.songTitle}>{post.track_name}</Text>
+          <Text style={styles.artistName}>{post.artist_name}</Text>
         </View>
+
+        {post.caption && (
+          <View style={styles.captionSection}>
+            <Text style={styles.captionText}>
+              <Text style={styles.captionUsername}>@{post.user.username} </Text>
+              {post.caption}
+            </Text>
+          </View>
+        )}
 
         <View style={styles.commentsSection}>
           <Text style={styles.sectionTitle}>Comments</Text>
@@ -99,6 +139,27 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.white,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 18,
+    color: Colors.darkGray,
+    marginTop: 15,
+    marginBottom: 20,
+  },
+  backToFeedButton: {
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    backgroundColor: Colors.primary,
+    borderRadius: 25,
+  },
+  backToFeedText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.white,
   },
   postImageContainer: {
     position: 'relative',
@@ -137,8 +198,15 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 10,
+  },
+  avatarText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.white,
   },
   userName: {
     fontSize: 16,
@@ -189,14 +257,29 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  albumArt: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+  },
+  albumArtPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
   },
   playButtonLarge: {
     width: 90,
     height: 90,
     borderRadius: 45,
-    backgroundColor: Colors.white,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 1,
   },
   content: {
     flex: 1,
@@ -210,7 +293,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginHorizontal: 20,
     marginTop: 15,
-    marginBottom: 10,
     borderRadius: 8,
     gap: 8,
   },
@@ -266,6 +348,21 @@ const styles = StyleSheet.create({
   artistName: {
     fontSize: 16,
     color: Colors.darkGray,
+  },
+  captionSection: {
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.lightGray,
+  },
+  captionText: {
+    fontSize: 15,
+    color: Colors.black,
+    lineHeight: 22,
+  },
+  captionUsername: {
+    fontWeight: '600',
+    color: Colors.black,
   },
   commentsSection: {
     paddingHorizontal: 20,

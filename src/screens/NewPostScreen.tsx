@@ -1,92 +1,145 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Modal, ActivityIndicator, Image, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
+import { api } from '../services/api';
+import { SpotifyTrack } from '../types/api';
+import { SpotifyTrackSearch } from '../components/SpotifyTrackSearch';
 
 interface NewPostScreenProps {
   navigation: any;
 }
 
 export const NewPostScreen: React.FC<NewPostScreenProps> = ({ navigation }) => {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [trackSelected, setTrackSelected] = useState(false);
+  const [caption, setCaption] = useState('');
+  const [selectedTrack, setSelectedTrack] = useState<SpotifyTrack | null>(null);
+  const [showSpotifySearch, setShowSpotifySearch] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SpotifyTrack[]>([]);
 
-  const handleSelectTrack = () => {
-    // Simulate track selection - in production this would open file picker
-    setTrackSelected(true);
-    Alert.alert('Track Selected', 'Track selection would happen here. For now, simulating a selected track.');
+  const handleSelectTrack = (track: SpotifyTrack, query: string, results: SpotifyTrack[]) => {
+    setSelectedTrack(track);
+    setSearchQuery(query);
+    setSearchResults(results);
+    setShowSpotifySearch(false);
   };
 
-  const handlePost = () => {
-    if (!title.trim()) {
-      Alert.alert('Missing Information', 'Please add a track title');
+  const handleRemoveTrack = () => {
+    setSelectedTrack(null);
+  };
+
+  const handlePost = async () => {
+    if (!selectedTrack) {
+      Alert.alert('Missing Track', 'Please select a track from Spotify');
       return;
     }
 
-    if (!trackSelected) {
-      Alert.alert('Missing Track', 'Please upload a track');
-      return;
-    }
+    setPosting(true);
 
-    // Simulate posting
-    Alert.alert(
-      'Post Created!',
-      `Your track "${title}" has been posted successfully!`,
-      [
-        {
-          text: 'OK',
-          onPress: () => navigation.goBack(),
-        },
-      ]
-    );
+    try {
+      await api.createPost({
+        caption: caption.trim() || undefined,
+        spotify_track_id: selectedTrack.id,
+        track_name: selectedTrack.name,
+        artist_name: selectedTrack.artist,
+        album_name: selectedTrack.album,
+        album_art_url: selectedTrack.album_art_url,
+      });
+
+      Alert.alert(
+        'Post Created!',
+        `Your post with "${selectedTrack.name}" has been shared!`,
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.navigate('Home'),
+          },
+        ]
+      );
+    } catch (err: any) {
+      console.error('Failed to create post:', err);
+      Alert.alert(
+        'Error',
+        err.response?.data?.detail || 'Failed to create post. Please try again.'
+      );
+    } finally {
+      setPosting(false);
+    }
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={Colors.black} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>New Post</Text>
-        <View style={{ width: 24 }} />
-      </View>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={Colors.black} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>New Post</Text>
+          <View style={{ width: 24 }} />
+        </View>
 
-      <View style={styles.content}>
-        <TouchableOpacity style={styles.uploadArea} onPress={handleSelectTrack}>
-          <View style={[styles.uploadIcon, trackSelected && styles.uploadIconSelected]}>
-            <Ionicons
-              name={trackSelected ? "checkmark" : "musical-note"}
-              size={32}
-              color={Colors.white}
-            />
-            {!trackSelected && (
+        <View style={styles.content}>
+        {selectedTrack ? (
+          <View style={styles.selectedTrackCard}>
+            <View style={styles.selectedTrackHeader}>
+              <Text style={styles.selectedTrackLabel}>Selected Track</Text>
+              <TouchableOpacity onPress={handleRemoveTrack} style={styles.removeButton}>
+                <Ionicons name="close-circle" size={24} color={Colors.primary} />
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={styles.selectedTrackContainer}
+              onPress={() => setShowSpotifySearch(true)}
+              activeOpacity={0.7}
+            >
+              {selectedTrack.album_art_url ? (
+                <Image
+                  source={{ uri: selectedTrack.album_art_url }}
+                  style={styles.selectedAlbumArt}
+                />
+              ) : (
+                <View style={styles.selectedAlbumArtPlaceholder}>
+                  <Ionicons name="musical-note" size={32} color={Colors.white} />
+                </View>
+              )}
+              <View style={styles.selectedTrackInfo}>
+                <Text style={styles.selectedTrackName} numberOfLines={1}>
+                  {selectedTrack.name}
+                </Text>
+                <Text style={styles.selectedArtistName} numberOfLines={1}>
+                  {selectedTrack.artist}
+                </Text>
+              </View>
+              <Ionicons name="checkmark-circle" size={32} color="#27AE60" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.uploadArea}
+            onPress={() => setShowSpotifySearch(true)}
+          >
+            <View style={styles.uploadIcon}>
+              <Ionicons name="musical-note" size={32} color={Colors.white} />
               <View style={styles.uploadBadge}>
                 <Ionicons name="add-circle" size={20} color={Colors.primary} />
               </View>
-            )}
-          </View>
-          <Text style={styles.uploadText}>
-            {trackSelected ? 'Track selected' : 'Upload your track'}
-          </Text>
-        </TouchableOpacity>
-
-        <TextInput
-          style={styles.titleInput}
-          placeholder="Track title..."
-          placeholderTextColor={Colors.darkGray}
-          value={title}
-          onChangeText={setTitle}
-        />
+            </View>
+            <Text style={styles.uploadText}>Search Spotify Track</Text>
+            <Text style={styles.uploadSubtext}>
+              Tap to search for a song
+            </Text>
+          </TouchableOpacity>
+        )}
 
         <TextInput
           style={styles.descriptionInput}
-          placeholder="Description..."
+          placeholder="Add a caption (optional)..."
           placeholderTextColor={Colors.darkGray}
-          value={description}
-          onChangeText={setDescription}
+          value={caption}
+          onChangeText={setCaption}
           multiline
-          numberOfLines={6}
+          numberOfLines={3}
           textAlignVertical="top"
         />
 
@@ -98,15 +151,33 @@ export const NewPostScreen: React.FC<NewPostScreenProps> = ({ navigation }) => {
             <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.postButton, (!title.trim() || !trackSelected) && styles.disabledButton]}
+            style={[styles.postButton, !selectedTrack && styles.disabledButton]}
             onPress={handlePost}
-            disabled={!title.trim() || !trackSelected}
+            disabled={!selectedTrack || posting}
           >
-            <Text style={styles.postButtonText}>Post</Text>
+            {posting ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <Text style={styles.postButtonText}>Post</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+
+        <Modal
+          visible={showSpotifySearch}
+          animationType="slide"
+          presentationStyle="fullScreen"
+        >
+          <SpotifyTrackSearch
+            onSelectTrack={handleSelectTrack}
+            onClose={() => setShowSpotifySearch(false)}
+            initialQuery={searchQuery}
+            initialResults={searchResults}
+          />
+        </Modal>
+      </View>
+    </TouchableWithoutFeedback>
   );
 };
 
@@ -185,21 +256,71 @@ const styles = StyleSheet.create({
   },
   uploadText: {
     fontSize: 16,
+    fontWeight: '600',
     color: Colors.black,
   },
-  titleInput: {
-    height: 50,
-    backgroundColor: Colors.white,
-    borderRadius: 10,
-    paddingHorizontal: 20,
+  uploadSubtext: {
+    fontSize: 14,
+    color: Colors.darkGray,
+    marginTop: 5,
+  },
+  selectedTrackCard: {
+    marginBottom: 20,
+  },
+  selectedTrackHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  selectedTrackLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.darkGray,
+  },
+  removeButton: {
+    padding: 5,
+  },
+  selectedTrackContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFE8EF',
+    borderRadius: 12,
+    padding: 15,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+  },
+  selectedAlbumArt: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  selectedAlbumArtPlaceholder: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  selectedTrackInfo: {
+    flex: 1,
+    marginRight: 10,
+  },
+  selectedTrackName: {
     fontSize: 16,
+    fontWeight: '600',
     color: Colors.black,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: Colors.lightGray,
+    marginBottom: 4,
+  },
+  selectedArtistName: {
+    fontSize: 14,
+    color: Colors.darkGray,
   },
   descriptionInput: {
-    height: 150,
+    height: 100,
     backgroundColor: Colors.white,
     borderRadius: 10,
     paddingHorizontal: 20,

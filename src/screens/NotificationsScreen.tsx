@@ -1,54 +1,147 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
+import { api } from '../services/api';
+import { Notification } from '../types/api';
 
 interface NotificationsScreenProps {
   navigation: any;
 }
 
-const mockNotifications = [
-  {
-    id: '1',
-    type: 'comment',
-    user: 'aditya_prasodjo',
-    userName: 'Aditya Prasodjo',
-    action: 'commented: Supercool',
-    time: '45s',
-    hasAction: true,
-  },
-  {
-    id: '2',
-    type: 'follow',
-    user: 'ahsannnn_',
-    userName: 'Ahsan',
-    action: 'started following you',
-    time: '1m',
-    hasAction: true,
-    actionType: 'follow',
-  },
-  {
-    id: '3',
-    type: 'like',
-    user: 'emitasan3360',
-    userName: 'Emita San',
-    action: 'liked your track',
-    time: '10m',
-    hasAction: true,
-  },
-  {
-    id: '4',
-    type: 'follow',
-    user: 'uibyanisa',
-    userName: 'Uibya Nisa',
-    action: 'started following you',
-    time: 'Oct. 31',
-    hasAction: false,
-    actionType: 'following',
-  },
-];
-
 export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ navigation }) => {
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadNotifications();
+  }, []);
+
+  const loadNotifications = async () => {
+    try {
+      setError(null);
+      const data = await api.getNotifications(50, 0, false);
+      setNotifications(data.items || data);
+    } catch (err: any) {
+      console.error('Failed to load notifications:', err);
+      setError(err.response?.data?.detail || 'Failed to load notifications');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadNotifications();
+  };
+
+  const handleMarkAsRead = async (notificationId: string) => {
+    try {
+      await api.markAsRead(notificationId);
+      setNotifications(notifications.map(n =>
+        n.id === notificationId ? { ...n, is_read: true } : n
+      ));
+    } catch (err) {
+      console.error('Failed to mark as read:', err);
+    }
+  };
+
+  const handleFollowUser = async (username: string) => {
+    try {
+      await api.followUser(username);
+      Alert.alert('Success', `You are now following @${username}`);
+    } catch (err: any) {
+      console.error('Failed to follow user:', err);
+      Alert.alert('Error', err.response?.data?.detail || 'Failed to follow user');
+    }
+  };
+
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d`;
+
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const getRecentNotifications = () => {
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    return notifications.filter(n => new Date(n.created_at) > oneDayAgo);
+  };
+
+  const getOlderNotifications = () => {
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    return notifications.filter(n => new Date(n.created_at) <= oneDayAgo);
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+  const recentNotifications = getRecentNotifications();
+  const olderNotifications = getOlderNotifications();
+
+  const renderNotification = (notif: Notification) => (
+    <TouchableOpacity
+      key={notif.id}
+      style={[styles.notificationItem, !notif.is_read && styles.unreadNotification]}
+      onPress={() => {
+        handleMarkAsRead(notif.id);
+        if (notif.post_id) {
+          navigation.navigate('PostDetail', { postId: notif.post_id });
+        } else {
+          navigation.navigate('UserProfile', { userName: notif.actor.username });
+        }
+      }}
+    >
+      <View style={styles.avatar}>
+        {notif.type === 'comment' && (
+          <View style={styles.iconBadge}>
+            <Ionicons name="chatbubble" size={16} color={Colors.white} />
+          </View>
+        )}
+        {notif.type === 'like' && (
+          <View style={[styles.iconBadge, styles.likeBadge]}>
+            <Ionicons name="heart" size={16} color={Colors.white} />
+          </View>
+        )}
+      </View>
+      <View style={styles.notificationContent}>
+        <Text style={styles.notificationText}>
+          <Text style={styles.userName}>@{notif.actor.username}</Text>
+          {'\n'}
+          <Text style={styles.actionText}>{notif.message}</Text>
+        </Text>
+        <Text style={styles.timeText}>{formatTimeAgo(notif.created_at)}</Text>
+      </View>
+      {notif.type === 'follow' && (
+        <TouchableOpacity
+          style={styles.followButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            handleFollowUser(notif.actor.username);
+          }}
+        >
+          <Text style={styles.followButtonText}>Follow</Text>
+        </TouchableOpacity>
+      )}
+      {!notif.is_read && <View style={styles.unreadDot} />}
+    </TouchableOpacity>
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -56,80 +149,54 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ naviga
           <Ionicons name="arrow-back" size={24} color={Colors.black} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notification</Text>
-        <View style={{ width: 24 }} />
+        <TouchableOpacity onPress={() => api.markAllAsRead()}>
+          <Text style={styles.markAllRead}>Mark all read</Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.devNotice}>
-        <Ionicons name="construct-outline" size={20} color={Colors.primary} />
-        <Text style={styles.devNoticeText}>Notifications feature under development</Text>
-      </View>
-
-      <ScrollView style={styles.notificationsList}>
-        <Text style={styles.sectionTitle}>RECENT</Text>
-        {mockNotifications.slice(0, 3).map((notif) => (
-          <TouchableOpacity
-            key={notif.id}
-            style={styles.notificationItem}
-            onPress={() => navigation.navigate('UserProfile', { userName: notif.userName })}
-          >
-            <View style={styles.avatar}>
-              {notif.type === 'comment' && (
-                <View style={styles.iconBadge}>
-                  <Ionicons name="musical-notes" size={16} color={Colors.white} />
-                </View>
-              )}
-            </View>
-            <View style={styles.notificationContent}>
-              <Text style={styles.notificationText}>
-                <Text style={styles.userName}>{notif.user}</Text>
-                {'\n'}
-                <Text style={styles.actionText}>{notif.action}</Text>
-              </Text>
-              <Text style={styles.timeText}>{notif.time}</Text>
-            </View>
-            {notif.hasAction && (
-              <TouchableOpacity
-                style={[
-                  styles.actionButton,
-                  notif.actionType === 'follow' && styles.followButton,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.actionButtonText,
-                    notif.actionType === 'follow' && styles.followButtonText,
-                  ]}
-                >
-                  {notif.actionType === 'follow' ? 'Follow' : '+'}
-                </Text>
-              </TouchableOpacity>
-            )}
+      {error && (
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={24} color={Colors.primary} />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity onPress={loadNotifications} style={styles.retryButton}>
+            <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
-        ))}
+        </View>
+      )}
 
-        <Text style={styles.sectionTitle}>LAST 7 DAYS</Text>
-        {mockNotifications.slice(3).map((notif) => (
-          <TouchableOpacity
-            key={notif.id}
-            style={styles.notificationItem}
-            onPress={() => navigation.navigate('UserProfile', { userName: notif.userName })}
-          >
-            <View style={styles.avatar} />
-            <View style={styles.notificationContent}>
-              <Text style={styles.notificationText}>
-                <Text style={styles.userName}>{notif.user}</Text>
-                {'\n'}
-                <Text style={styles.actionText}>{notif.action}</Text>
-              </Text>
-              <Text style={styles.timeText}>{notif.time}</Text>
-            </View>
-            {notif.actionType === 'following' && (
-              <View style={styles.followingBadge}>
-                <Text style={styles.followingText}>Following</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
+      <ScrollView
+        style={styles.notificationsList}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[Colors.primary]}
+          />
+        }
+      >
+        {recentNotifications.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>RECENT</Text>
+            {recentNotifications.map(renderNotification)}
+          </>
+        )}
+
+        {olderNotifications.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>EARLIER</Text>
+            {olderNotifications.map(renderNotification)}
+          </>
+        )}
+
+        {!loading && !error && notifications.length === 0 && (
+          <View style={styles.emptyState}>
+            <Ionicons name="notifications-outline" size={64} color={Colors.mediumGray} />
+            <Text style={styles.emptyStateText}>No notifications yet</Text>
+            <Text style={styles.emptyStateSubtext}>
+              When someone likes, comments, or follows you, you'll see it here
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -139,6 +206,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.white,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -153,22 +224,56 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: Colors.black,
   },
-  devNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFE8EF',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    marginHorizontal: 20,
-    marginBottom: 15,
-    borderRadius: 8,
-    gap: 8,
-  },
-  devNoticeText: {
-    fontSize: 13,
+  markAllRead: {
+    fontSize: 14,
     fontWeight: '600',
     color: Colors.primary,
+  },
+  errorContainer: {
+    backgroundColor: '#FFE8EF',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: '500',
+  },
+  retryButton: {
+    paddingHorizontal: 15,
+    paddingVertical: 6,
+    backgroundColor: Colors.primary,
+    borderRadius: 15,
+  },
+  retryText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.white,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.black,
+    marginTop: 15,
+    marginBottom: 5,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: Colors.darkGray,
+    textAlign: 'center',
   },
   notificationsList: {
     flex: 1,
@@ -186,6 +291,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 15,
+    position: 'relative',
+  },
+  unreadNotification: {
+    backgroundColor: '#FFF5F8',
   },
   avatar: {
     width: 50,
@@ -207,6 +316,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: Colors.white,
+  },
+  likeBadge: {
+    backgroundColor: Colors.primary,
+  },
+  unreadDot: {
+    position: 'absolute',
+    right: 20,
+    top: '50%',
+    marginTop: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.primary,
   },
   notificationContent: {
     flex: 1,

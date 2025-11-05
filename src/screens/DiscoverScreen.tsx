@@ -1,24 +1,48 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
+import { api } from '../services/api';
 
 interface DiscoverScreenProps {
   navigation: any;
 }
 
-const mockGenres = [
-  { id: '1', name: '#Electronic', followers: '1.1M Followers', tracks: '100 Tracks' },
-  { id: '2', name: 'Rock', followers: '976K Followers', tracks: '75 Tracks' },
-];
-
-const mockUsers = [
-  { id: '1', name: 'Olivia Wilson', handle: 'olivia_wilson' },
-  { id: '2', name: 'Emma Jones', handle: 'emma_jones' },
-  { id: '3', name: 'Cameron Blake', handle: 'cameron_blake' },
-];
+interface UserSearchResult {
+  id: string;
+  username: string;
+  display_name: string;
+  profile_image_url?: string;
+  is_following: boolean;
+}
 
 export const DiscoverScreen: React.FC<DiscoverScreenProps> = ({ navigation }) => {
+  const [searchText, setSearchText] = useState('');
+  const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const handleSearch = async () => {
+    if (!searchText.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const results = await api.searchUsers(searchText.trim());
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Search error:', error);
+      setSearchResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUserPress = (username: string) => {
+    navigation.navigate('UserProfile', { username });
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -29,43 +53,68 @@ export const DiscoverScreen: React.FC<DiscoverScreenProps> = ({ navigation }) =>
         <Ionicons name="search" size={20} color={Colors.darkGray} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search Users, #Hashtags"
+          placeholder="Search Users"
           placeholderTextColor={Colors.darkGray}
+          value={searchText}
+          onChangeText={setSearchText}
+          onSubmitEditing={handleSearch}
+          returnKeyType="search"
         />
+        {searchText.length > 0 && (
+          <TouchableOpacity onPress={() => {
+            setSearchText('');
+            setSearchResults([]);
+          }}>
+            <Ionicons name="close-circle" size={20} color={Colors.darkGray} />
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView style={styles.content}>
-        <View style={styles.section}>
-          <View style={styles.genresGrid}>
-            {mockGenres.map((genre) => (
-              <View key={genre.id} style={styles.genreCard}>
-                <View style={styles.genreGradient} />
-                <View style={styles.genreInfo}>
-                  <Text style={styles.genreName}>{genre.name}</Text>
-                  <Text style={styles.genreStats}>{genre.followers}</Text>
-                  <Text style={styles.genreStats}>{genre.tracks}</Text>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loadingText}>Searching...</Text>
+          </View>
+        ) : searchResults.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>USERS</Text>
+            {searchResults.map((user) => (
+              <TouchableOpacity
+                key={user.id}
+                style={styles.userItem}
+                onPress={() => handleUserPress(user.username)}
+              >
+                <View style={styles.userAvatar}>
+                  <Text style={styles.avatarText}>
+                    {user.display_name?.charAt(0).toUpperCase() || user.username?.charAt(0).toUpperCase()}
+                  </Text>
                 </View>
-              </View>
+                <View style={styles.userInfo}>
+                  <Text style={styles.userName}>{user.display_name}</Text>
+                  <Text style={styles.userHandle}>@{user.username}</Text>
+                </View>
+                {user.is_following && (
+                  <View style={styles.followingBadge}>
+                    <Text style={styles.followingBadgeText}>Following</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
             ))}
           </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>USERS</Text>
-          {mockUsers.map((user) => (
-            <TouchableOpacity
-              key={user.id}
-              style={styles.userItem}
-              onPress={() => navigation.navigate('UserProfile', { userName: user.name })}
-            >
-              <View style={styles.userAvatar} />
-              <View style={styles.userInfo}>
-                <Text style={styles.userName}>{user.name}</Text>
-                <Text style={styles.userHandle}>@{user.handle}</Text>
+        ) : (
+          <>
+            <View style={styles.section}>
+              <View style={styles.emptyState}>
+                <Ionicons name="people-outline" size={64} color={Colors.mediumGray} />
+                <Text style={styles.emptyStateText}>Search for users</Text>
+                <Text style={styles.emptyStateSubtext}>
+                  Find people by their username or display name
+                </Text>
               </View>
-            </TouchableOpacity>
-          ))}
-        </View>
+            </View>
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -163,10 +212,15 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: Colors.lightGray,
-    borderWidth: 2,
-    borderColor: Colors.primary,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 15,
+  },
+  avatarText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: Colors.white,
   },
   userInfo: {
     flex: 1,
@@ -180,5 +234,44 @@ const styles = StyleSheet.create({
   userHandle: {
     fontSize: 14,
     color: Colors.darkGray,
+  },
+  followingBadge: {
+    backgroundColor: Colors.lightGray,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+  },
+  followingBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.darkGray,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: Colors.darkGray,
+    marginTop: 15,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.black,
+    marginTop: 15,
+    marginBottom: 5,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: Colors.darkGray,
+    textAlign: 'center',
   },
 });

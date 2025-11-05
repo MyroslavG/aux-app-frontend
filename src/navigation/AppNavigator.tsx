@@ -10,6 +10,7 @@ import { SearchScreen } from '../screens/SearchScreen';
 import { UserProfileScreen } from '../screens/UserProfileScreen';
 import { NewPostScreen } from '../screens/NewPostScreen';
 import { PostDetailScreen } from '../screens/PostDetailScreen';
+import { SettingsScreen } from '../screens/SettingsScreen';
 import { useAuth } from '../context/AuthContext';
 
 const Stack = createNativeStackNavigator();
@@ -35,6 +36,7 @@ export const AppNavigator: React.FC = () => {
           <Stack.Screen name="UserProfile" component={UserProfileScreen} />
           <Stack.Screen name="NewPost" component={NewPostScreen} />
           <Stack.Screen name="PostDetail" component={PostDetailScreen} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
         </Stack.Navigator>
       )}
     </NavigationContainer>

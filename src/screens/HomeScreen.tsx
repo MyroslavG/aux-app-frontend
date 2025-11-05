@@ -1,36 +1,13 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
+import { api } from '../services/api';
+import { Post } from '../types/api';
 
 interface HomeScreenProps {
   navigation: any;
 }
-
-const showUnderDevelopment = () => {
-  Alert.alert('Under Development', 'This feature is coming soon!');
-};
-
-const mockPosts = [
-  {
-    id: '1',
-    user: { name: 'akmalnstlh', location: 'Bekasi', time: '1 mins ago' },
-    song: { title: 'All Too Well', artist: 'Taylor Swift', likes: 349, comments: 760 },
-    image: 'https://picsum.photos/400/400?random=1',
-  },
-  {
-    id: '2',
-    user: { name: 'akmalnstlh', location: 'Bekasi', time: '10 mins ago' },
-    song: { title: 'Blinding Lights', artist: 'The Weeknd', likes: 245, comments: 432 },
-    image: 'https://picsum.photos/400/400?random=2',
-  },
-  {
-    id: '3',
-    user: { name: 'akmalnstlh', location: 'Bekasi', time: '10 mins ago' },
-    song: { title: 'Blinding Lights', artist: 'The Weeknd', likes: 245, comments: 432 },
-    image: 'https://picsum.photos/400/400?random=2',
-  },
-];
 
 const mockStories = [
   { id: '0', name: 'Your story', isYours: true },
@@ -43,6 +20,53 @@ const mockStories = [
 const HEADER_HEIGHT = 95;
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadFeed();
+  }, []);
+
+  const loadFeed = async () => {
+    try {
+      setError(null);
+      const feedData = await api.getFeed(20, 0);
+      setPosts(feedData.items || feedData);
+    } catch (err: any) {
+      console.error('Failed to load feed:', err);
+      setError(err.response?.data?.detail || 'Failed to load feed');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadFeed();
+  };
+
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (seconds < 60) return `${seconds}s ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* Sticky Header */}
@@ -67,84 +91,110 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[Colors.primary]}
+          />
+        }
       >
         {/* Stories */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.storiesContainer}>
-        {mockStories.map((story) => (
-          <View key={story.id} style={styles.storyItem}>
-            <View style={[styles.storyCircle, story.isYours && styles.yourStory]}>
-              <View style={styles.storyAvatar}>
-                {story.isYours && (
-                  <View style={styles.addStoryButton}>
-                    <Ionicons name="add" size={16} color={Colors.white} />
-                  </View>
-                )}
-              </View>
-            </View>
-            <Text style={styles.storyName}>{story.name}</Text>
-          </View>
-        ))}
-      </ScrollView>
-
-      {/* Posts */}
-      {mockPosts.map((post) => (
-        <View key={post.id} style={styles.post}>
-          <View style={styles.postHeader}>
-            <TouchableOpacity
-              style={styles.postUser}
-              onPress={() => navigation.navigate('UserProfile', { userName: post.user.name })}
-            >
-              <View style={styles.userAvatar} />
-              <View>
-                <Text style={styles.userName}>{post.user.name}</Text>
-                <View style={styles.postMeta}>
-                  <Text style={styles.location}>{post.user.location}</Text>
-                  <Text style={styles.dot}> · </Text>
-                  <Text style={styles.time}>{post.user.time}</Text>
+        {/* <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.storiesContainer}>
+          {mockStories.map((story) => (
+            <View key={story.id} style={styles.storyItem}>
+              <View style={[styles.storyCircle, story.isYours && styles.yourStory]}>
+                <View style={styles.storyAvatar}>
+                  {story.isYours && (
+                    <View style={styles.addStoryButton}>
+                      <Ionicons name="add" size={16} color={Colors.white} />
+                    </View>
+                  )}
                 </View>
               </View>
+              <Text style={styles.storyName}>{story.name}</Text>
+            </View>
+          ))}
+        </ScrollView> */}
+
+        {/* Error Message */}
+        {error && (
+          <View style={styles.errorContainer}>
+            <Ionicons name="alert-circle-outline" size={24} color={Colors.primary} />
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity onPress={loadFeed} style={styles.retryButton}>
+              <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
-            {/* <TouchableOpacity>
-              <Ionicons name="ellipsis-horizontal" size={24} color={Colors.black} />
-            </TouchableOpacity> */}
           </View>
+        )}
 
-          <TouchableOpacity
-            style={styles.postImage}
-            onPress={() => navigation.navigate('PostDetail', { post })}
-          >
-            <View style={styles.playButton}>
-              <Ionicons name="play" size={32} color={Colors.primary} />
-            </View>
-          </TouchableOpacity>
+        {/* Posts */}
+        {posts.map((post: Post) => {
+          if (!post || !post.user) return null;
 
-          <View style={styles.songInfo}>
-            <Text style={styles.songTitle}>{post.song.title}</Text>
-            <Text style={styles.artistName}>{post.song.artist}</Text>
-          </View>
-
-          <View style={styles.postActions}>
-            <View style={styles.actionLeft}>
-              <TouchableOpacity style={styles.actionButton} onPress={showUnderDevelopment}>
-                <Ionicons name="heart-outline" size={24} color={Colors.black} />
-                <Text style={styles.actionText}>{post.song.likes} Likes</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.actionButton} onPress={showUnderDevelopment}>
-                <Ionicons name="chatbubble-outline" size={24} color={Colors.black} />
-                <Text style={styles.actionText}>{post.song.comments} Comments</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.actionRight}>
-              <TouchableOpacity onPress={showUnderDevelopment}>
-                <Ionicons name="share-outline" size={24} color={Colors.black} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={showUnderDevelopment}>
-                <Ionicons name="bookmark-outline" size={24} color={Colors.black} />
+          return (
+          <View key={post.id} style={styles.post}>
+            <View style={styles.postHeader}>
+              <TouchableOpacity
+                style={styles.postUser}
+                onPress={() => navigation.navigate('UserProfile', { username: post.user.username })}
+              >
+                <View style={styles.userAvatar}>
+                  <Text style={styles.userAvatarText}>
+                    {post.user.display_name?.charAt(0).toUpperCase() || post.user.username?.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={styles.userName}>{post.user.display_name}</Text>
+                  <View style={styles.postMeta}>
+                    <Text style={styles.location}>@{post.user.username}</Text>
+                    <Text style={styles.dot}> · </Text>
+                    <Text style={styles.time}>{formatTimeAgo(post.created_at)}</Text>
+                  </View>
+                </View>
               </TouchableOpacity>
             </View>
+
+            <TouchableOpacity
+              style={styles.postImage}
+              onPress={() => navigation.navigate('PostDetail', { post })}
+            >
+              {post.album_art_url ? (
+                <Image source={{ uri: post.album_art_url }} style={styles.albumArt} />
+              ) : (
+                <View style={styles.albumArtPlaceholder}>
+                  <Ionicons name="musical-note" size={64} color={Colors.white} />
+                </View>
+              )}
+              <View style={styles.overlay}>
+                <Text style={styles.songTitle}>{post.track_name}</Text>
+                <Text style={styles.artistName}>{post.artist_name}</Text>
+              </View>
+              <View style={styles.playButton}>
+                <Ionicons name="play" size={32} color={Colors.primary} />
+              </View>
+            </TouchableOpacity>
+
+            {post.caption && (
+              <View style={styles.captionContainer}>
+                <Text style={styles.captionText}>
+                  <Text style={styles.captionUsername}>{post.user.username} </Text>
+                  {post.caption}
+                </Text>
+              </View>
+            )}
           </View>
-        </View>
-      ))}
+          );
+        })}
+
+        {/* Empty State */}
+        {!loading && !error && posts.length === 0 && (
+          <View style={styles.emptyState}>
+            <Ionicons name="musical-notes-outline" size={64} color={Colors.mediumGray} />
+            <Text style={styles.emptyStateText}>No posts yet</Text>
+            <Text style={styles.emptyStateSubtext}>Follow some users to see their posts</Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -154,6 +204,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.white,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     position: 'absolute',
@@ -254,6 +308,52 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.black,
   },
+  errorContainer: {
+    backgroundColor: '#FFE8EF',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    marginHorizontal: 15,
+    marginBottom: 20,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: '500',
+  },
+  retryButton: {
+    paddingHorizontal: 15,
+    paddingVertical: 6,
+    backgroundColor: Colors.primary,
+    borderRadius: 15,
+  },
+  retryText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.white,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.black,
+    marginTop: 15,
+    marginBottom: 5,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: Colors.darkGray,
+    textAlign: 'center',
+  },
   post: {
     marginBottom: 20,
   },
@@ -272,8 +372,15 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: Colors.lightGray,
+    backgroundColor: Colors.primary,
     marginRight: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userAvatarText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.white,
   },
   userName: {
     fontSize: 15,
@@ -303,6 +410,38 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  albumArt: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+  },
+  albumArtPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+  },
+  overlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 15,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  songTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.white,
+    marginBottom: 4,
+  },
+  artistName: {
+    fontSize: 14,
+    color: Colors.white,
   },
   playButton: {
     width: 70,
@@ -311,45 +450,27 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'absolute',
   },
-  songInfo: {
+  captionContainer: {
     paddingHorizontal: 15,
-    paddingVertical: 8,
+    paddingVertical: 15,
   },
-  songTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.white,
-    position: 'absolute',
-    bottom: 50,
-    left: 15,
-  },
-  artistName: {
+  captionText: {
     fontSize: 14,
-    color: Colors.white,
-    position: 'absolute',
-    bottom: 30,
-    left: 15,
+    color: Colors.black,
+    lineHeight: 20,
+  },
+  captionUsername: {
+    fontWeight: '600',
+    color: Colors.black,
   },
   postActions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
     paddingHorizontal: 15,
-  },
-  actionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 20,
-  },
-  actionText: {
-    fontSize: 14,
-    color: Colors.black,
-    marginLeft: 5,
+    paddingTop: 8,
   },
   actionRight: {
     flexDirection: 'row',

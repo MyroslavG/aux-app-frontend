@@ -1,12 +1,62 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Platform } from 'react-native';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
 import { Colors } from '../constants/colors';
 
+// Enable dismissing the browser on completion (for mobile)
+WebBrowser.maybeCompleteAuthSession();
+
 interface WelcomeScreenProps {
-  onGoogleSignIn: () => void;
+  onGoogleSignIn: (idToken: string) => Promise<void>;
 }
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onGoogleSignIn }) => {
+  const [loading, setLoading] = useState(false);
+
+  // Get the redirect URI - use custom scheme for both web and mobile
+  const redirectUri = Platform.OS === 'web'
+    ? `${window.location.origin}/`
+    : 'com.auxapp:/oauth2redirect';
+
+  // Use Expo Auth Session for both web and mobile
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    redirectUri: redirectUri,
+  });
+
+  // Handle Expo Auth Session response
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const { id_token } = response.params;
+      if (id_token) {
+        handleAuthSuccess(id_token);
+      }
+    } else if (response?.type === 'error') {
+      console.error('Auth error:', response.error);
+      Alert.alert('Sign In Error', 'Failed to sign in with Google');
+      setLoading(false);
+    } else if (response?.type === 'cancel') {
+      setLoading(false);
+    }
+  }, [response]);
+
+  const handleAuthSuccess = async (idToken: string) => {
+    try {
+      await onGoogleSignIn(idToken);
+    } catch (error: any) {
+      console.error('Sign in error:', error);
+      Alert.alert('Sign In Failed', error.message || 'Failed to sign in');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    promptAsync();
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -22,9 +72,19 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onGoogleSignIn }) 
       </View>
 
       <View style={styles.authSection}>
-        <TouchableOpacity style={styles.googleButton} onPress={onGoogleSignIn}>
-          <Text style={styles.googleButtonText}>G</Text>
-          <Text style={styles.googleButtonLabel}>Continue with Google</Text>
+        <TouchableOpacity
+          style={[styles.googleButton, (loading || !request) && styles.disabledButton]}
+          onPress={handleGoogleSignIn}
+          disabled={loading || !request}
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <>
+              <Text style={styles.googleButtonText}>G</Text>
+              <Text style={styles.googleButtonLabel}>Continue with Google</Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -75,13 +135,6 @@ const styles = StyleSheet.create({
   authSection: {
     paddingHorizontal: 30,
   },
-  authTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.black,
-    marginBottom: 20,
-    textAlign: 'center',
-  },
   googleButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -104,26 +157,8 @@ const styles = StyleSheet.create({
     color: Colors.black,
     fontWeight: '500',
   },
-  appleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.mediumGray,
-    borderRadius: 25,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  appleButtonText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginRight: 15,
-  },
-  appleButtonLabel: {
-    fontSize: 15,
-    color: Colors.black,
-    fontWeight: '500',
+  disabledButton: {
+    opacity: 0.5,
   },
   termsText: {
     fontSize: 12,
