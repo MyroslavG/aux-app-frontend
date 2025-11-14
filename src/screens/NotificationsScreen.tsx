@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
 import { api } from '../services/api';
@@ -14,6 +14,7 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ naviga
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [followingStatus, setFollowingStatus] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
     loadNotifications();
@@ -23,7 +24,47 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ naviga
     try {
       setError(null);
       const data = await api.getNotifications(50, 0, false);
-      setNotifications(data.items || data);
+      const notificationList = Array.isArray(data) ? data : (data.items || []);
+      setNotifications(notificationList);
+
+      // Initialize following status from notification data
+      const statusMap: { [key: string]: boolean } = {};
+
+      // Fetch following status for all follow notifications
+      const followNotifications = notificationList.filter((n: Notification) => n.type === 'follow');
+
+      for (const n of followNotifications) {
+        // Use actor data (new format) if available, otherwise try legacy data
+        const username = n.actor?.username;
+        if (username) {
+          try {
+            const userProfile = await api.getUserProfile(username);
+            statusMap[username] = userProfile.is_following || false;
+          } catch (err) {
+            console.error(`Failed to fetch profile for ${username}:`, err);
+          }
+        }
+      }
+
+      setFollowingStatus(statusMap);
+
+      // Mark all unread notifications as read after loading
+      const unreadIds = notificationList
+        .filter((n: Notification) => !n.is_read)
+        .map((n: Notification) => n.id);
+
+      if (unreadIds.length > 0) {
+        // Mark as read without waiting (fire and forget)
+        api.markAsRead(unreadIds).catch(err => {
+          console.error('Failed to mark notifications as read:', err);
+        });
+
+        // Update local state immediately
+        setNotifications(notificationList.map((n: Notification) => ({
+          ...n,
+          is_read: true,
+        })));
+      }
     } catch (err: any) {
       console.error('Failed to load notifications:', err);
       setError(err.response?.data?.detail || 'Failed to load notifications');
@@ -38,20 +79,11 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ naviga
     loadNotifications();
   };
 
-  const handleMarkAsRead = async (notificationId: string) => {
-    try {
-      await api.markAsRead(notificationId);
-      setNotifications(notifications.map(n =>
-        n.id === notificationId ? { ...n, is_read: true } : n
-      ));
-    } catch (err) {
-      console.error('Failed to mark as read:', err);
-    }
-  };
-
   const handleFollowUser = async (username: string) => {
     try {
       await api.followUser(username);
+      // Update local following status
+      setFollowingStatus(prev => ({ ...prev, [username]: true }));
       Alert.alert('Success', `You are now following @${username}`);
     } catch (err: any) {
       console.error('Failed to follow user:', err);
@@ -94,53 +126,76 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ naviga
   const recentNotifications = getRecentNotifications();
   const olderNotifications = getOlderNotifications();
 
-  const renderNotification = (notif: Notification) => (
-    <TouchableOpacity
-      key={notif.id}
-      style={[styles.notificationItem, !notif.is_read && styles.unreadNotification]}
-      onPress={() => {
-        handleMarkAsRead(notif.id);
-        if (notif.post_id) {
-          navigation.navigate('PostDetail', { postId: notif.post_id });
-        } else {
-          navigation.navigate('UserProfile', { userName: notif.actor.username });
-        }
-      }}
-    >
-      <View style={styles.avatar}>
-        {notif.type === 'comment' && (
-          <View style={styles.iconBadge}>
-            <Ionicons name="chatbubble" size={16} color={Colors.white} />
-          </View>
+  const renderNotification = (notif: Notification) => {
+    // Use new actor field with current user data
+    const actorUsername = notif.actor?.username || 'Unknown';
+    const actorDisplayName = notif.actor?.display_name || actorUsername;
+    const profileImageUrl = notif.actor?.profile_image_url;
+    const postId = notif.data?.post_id;
+    const isFollowing = followingStatus[actorUsername] || false;
+
+    return (
+      <TouchableOpacity
+        key={notif.id}
+        style={[styles.notificationItem, !notif.is_read && styles.unreadNotification]}
+        onPress={() => {
+          if (postId) {
+            navigation.navigate('PostDetail', { postId });
+          } else {
+            navigation.navigate('UserProfile', { username: actorUsername });
+          }
+        }}
+      >
+        <View style={styles.avatarContainer}>
+          {profileImageUrl ? (
+            <Image source={{ uri: profileImageUrl }} style={styles.avatarImage} />
+          ) : (
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {actorDisplayName.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
+          {notif.type === 'comment' && (
+            <View style={styles.iconBadge}>
+              <Ionicons name="chatbubble" size={16} color={Colors.white} />
+            </View>
+          )}
+          {notif.type === 'like' && (
+            <View style={[styles.iconBadge, styles.likeBadge]}>
+              <Ionicons name="heart" size={16} color={Colors.white} />
+            </View>
+          )}
+          {notif.type === 'follow' && (
+            <View style={[styles.iconBadge, styles.followBadge]}>
+              <Ionicons name="person-add" size={16} color={Colors.white} />
+            </View>
+          )}
+        </View>
+        <View style={styles.notificationContent}>
+          <Text style={styles.notificationText}>
+            <Text style={styles.userName}>{actorDisplayName}</Text>
+          </Text>
+          {notif.body && (
+            <Text style={styles.bodyText} numberOfLines={2}>{notif.body}</Text>
+          )}
+          <Text style={styles.timeText}>{formatTimeAgo(notif.created_at)}</Text>
+        </View>
+        {notif.type === 'follow' && !isFollowing && (
+          <TouchableOpacity
+            style={styles.followButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleFollowUser(actorUsername);
+            }}
+          >
+            <Text style={styles.followButtonText}>Follow</Text>
+          </TouchableOpacity>
         )}
-        {notif.type === 'like' && (
-          <View style={[styles.iconBadge, styles.likeBadge]}>
-            <Ionicons name="heart" size={16} color={Colors.white} />
-          </View>
-        )}
-      </View>
-      <View style={styles.notificationContent}>
-        <Text style={styles.notificationText}>
-          <Text style={styles.userName}>@{notif.actor.username}</Text>
-          {'\n'}
-          <Text style={styles.actionText}>{notif.message}</Text>
-        </Text>
-        <Text style={styles.timeText}>{formatTimeAgo(notif.created_at)}</Text>
-      </View>
-      {notif.type === 'follow' && (
-        <TouchableOpacity
-          style={styles.followButton}
-          onPress={(e) => {
-            e.stopPropagation();
-            handleFollowUser(notif.actor.username);
-          }}
-        >
-          <Text style={styles.followButtonText}>Follow</Text>
-        </TouchableOpacity>
-      )}
-      {!notif.is_read && <View style={styles.unreadDot} />}
-    </TouchableOpacity>
-  );
+        {!notif.is_read && <View style={styles.unreadDot} />}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -148,10 +203,8 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ naviga
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color={Colors.black} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Notification</Text>
-        <TouchableOpacity onPress={() => api.markAllAsRead()}>
-          <Text style={styles.markAllRead}>Mark all read</Text>
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Notifications</Text>
+        <View style={{ width: 24 }} />
       </View>
 
       {error && (
@@ -224,11 +277,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: Colors.black,
   },
-  markAllRead: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.primary,
-  },
   errorContainer: {
     backgroundColor: '#FFE8EF',
     paddingVertical: 15,
@@ -296,13 +344,30 @@ const styles = StyleSheet.create({
   unreadNotification: {
     backgroundColor: '#FFF5F8',
   },
+  avatarContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 15,
+    position: 'relative',
+  },
   avatar: {
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: Colors.lightGray,
-    marginRight: 15,
-    position: 'relative',
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  avatarText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: Colors.white,
   },
   iconBadge: {
     position: 'absolute',
@@ -319,6 +384,9 @@ const styles = StyleSheet.create({
   },
   likeBadge: {
     backgroundColor: Colors.primary,
+  },
+  followBadge: {
+    backgroundColor: '#3498db',
   },
   unreadDot: {
     position: 'absolute',
@@ -343,6 +411,11 @@ const styles = StyleSheet.create({
   },
   actionText: {
     color: Colors.darkGray,
+  },
+  bodyText: {
+    fontSize: 13,
+    color: Colors.darkGray,
+    lineHeight: 18,
   },
   timeText: {
     fontSize: 12,
@@ -373,6 +446,7 @@ const styles = StyleSheet.create({
   followButtonText: {
     fontSize: 14,
     fontWeight: '600',
+    color: Colors.white,
   },
   followingBadge: {
     paddingHorizontal: 16,

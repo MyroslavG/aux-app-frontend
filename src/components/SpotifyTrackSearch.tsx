@@ -84,7 +84,6 @@ export const SpotifyTrackSearch: React.FC<SpotifyTrackSearchProps> = ({
           </Text>
           {item.duration_ms > 0 && (
             <>
-              <Text style={styles.metaSeparator}> • </Text>
               <Text style={styles.duration}>{formatDuration(item.duration_ms)}</Text>
             </>
           )}
@@ -154,6 +153,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.white,
+    marginBottom: 40,
   },
   header: {
     flexDirection: 'row',

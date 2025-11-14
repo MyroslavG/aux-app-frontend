@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl, Image } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Image, Linking, FlatList, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { Colors } from '../constants/colors';
 import { api } from '../services/api';
 import { Post } from '../types/api';
@@ -9,25 +10,40 @@ interface HomeScreenProps {
   navigation: any;
 }
 
-const mockStories = [
-  { id: '0', name: 'Your story', isYours: true },
-  { id: '1', name: 'calista33' },
-  { id: '2', name: 'azzahrrn' },
-  { id: '3', name: 'adamsuseno' },
-  { id: '4', name: 'adeliaaa' },
-];
-
+const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 const HEADER_HEIGHT = 95;
+const POST_HEIGHT = SCREEN_HEIGHT - HEADER_HEIGHT;
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
     loadFeed();
+    loadUnreadCount();
   }, []);
+
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadFeed();
+      loadUnreadCount();
+    }, [])
+  );
+
+  const loadUnreadCount = async () => {
+    try {
+      const data = await api.getUnreadCount();
+      setUnreadCount(data.unread_count || 0);
+    } catch (err) {
+      console.error('Failed to load unread count:', err);
+    }
+  };
 
   const loadFeed = async () => {
     try {
@@ -59,10 +75,162 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     return `${Math.floor(seconds / 86400)}d ago`;
   };
 
+  const handlePlayOnSpotify = async (post: Post) => {
+    if (!post?.spotify_track_id) return;
+
+    // Construct Spotify URI from track ID if URI is not available
+    const spotifyUri = post.spotify_uri || `spotify:track:${post.spotify_track_id}`;
+    const spotifyWebUrl = `https://open.spotify.com/track/${post.spotify_track_id}`;
+
+    try {
+      // Try to open in Spotify app first
+      const canOpen = await Linking.canOpenURL(spotifyUri);
+      if (canOpen) {
+        await Linking.openURL(spotifyUri);
+      } else {
+        // Fallback to web URL if Spotify app is not installed
+        await Linking.openURL(spotifyWebUrl);
+      }
+    } catch (error) {
+      console.error('Failed to open Spotify:', error);
+      Alert.alert(
+        'Cannot Open Spotify',
+        'Please make sure you have Spotify installed or try again later.'
+      );
+    }
+  };
+
+  const renderPost = ({ item: post, index }: { item: Post; index: number }) => {
+    if (!post || !post.user) return null;
+
+    return (
+      <View style={styles.postContainer}>
+        {/* Album Art Background (full screen) */}
+        <View style={styles.albumArtContainer}>
+          {post.album_art_url ? (
+            <Image source={{ uri: post.album_art_url }} style={styles.fullScreenAlbumArt} blurRadius={50} />
+          ) : (
+            <View style={styles.fullScreenAlbumArtPlaceholder}>
+              <Ionicons name="musical-note" size={100} color={Colors.white} />
+            </View>
+          )}
+          {/* Dark overlay for readability */}
+          <View style={styles.darkOverlay} />
+        </View>
+
+        {/* Main Album Art (centered) */}
+        <View style={styles.centerContent}>
+          <TouchableOpacity
+            style={styles.albumArtCard}
+            activeOpacity={0.9}
+            onPress={() => handlePlayOnSpotify(post)}
+          >
+            {post.album_art_url ? (
+              <Image source={{ uri: post.album_art_url }} style={styles.albumArtMain} />
+            ) : (
+              <View style={styles.albumArtMainPlaceholder}>
+                <Ionicons name="musical-note" size={80} color={Colors.white} />
+              </View>
+            )}
+            {/* Play button overlay */}
+            <View style={styles.playButtonOverlay}>
+              <Ionicons name="play-circle" size={64} color={Colors.white} />
+            </View>
+          </TouchableOpacity>
+
+          {/* Track Info */}
+          <View style={styles.trackInfo}>
+            <Text style={styles.trackName} numberOfLines={2}>
+              {post.track_name}
+            </Text>
+            <Text style={styles.artistName} numberOfLines={1}>
+              {post.artist_name}
+            </Text>
+          </View>
+        </View>
+
+        {/* Bottom User Info & Caption */}
+        <View style={styles.bottomInfo}>
+          <TouchableOpacity
+            style={styles.userInfoRow}
+            onPress={() => navigation.navigate('UserProfile', { username: post.user.username })}
+          >
+            {post.user.profile_image_url ? (
+              <Image source={{ uri: post.user.profile_image_url }} style={styles.userAvatar} />
+            ) : (
+              <View style={styles.userAvatarPlaceholder}>
+                <Text style={styles.userAvatarText}>
+                  {post.user.display_name?.charAt(0).toUpperCase() || post.user.username?.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
+            <View style={styles.userTextInfo}>
+              <Text style={styles.displayName}>{post.user.display_name || post.user.username}</Text>
+              <Text style={styles.username}>@{post.user.username} · {formatTimeAgo(post.created_at)}</Text>
+            </View>
+          </TouchableOpacity>
+
+          {post.caption && (
+            <TouchableOpacity onPress={() => navigation.navigate('PostDetail', { post })}>
+              <Text style={styles.caption} numberOfLines={3}>
+                {post.caption}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    );
+  };
+
   if (loading) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
+      <View style={[styles.container, styles.centerContentLoading]}>
         <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centerContentLoading]}>
+        <Ionicons name="alert-circle-outline" size={64} color={Colors.primary} />
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity onPress={loadFeed} style={styles.retryButton}>
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (!loading && posts.length === 0) {
+    return (
+      <View style={styles.container}>
+        {/* Sticky Header */}
+        <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            <View style={styles.logo}>
+              <Text style={styles.logoText}>///.</Text>
+            </View>
+            <Text style={styles.appName}>AUX</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.notificationButton}
+            onPress={() => {
+              navigation.navigate('Notifications');
+              setUnreadCount(0);
+            }}
+          >
+            <Ionicons name="notifications-outline" size={24} color={Colors.black} />
+            {unreadCount > 0 && <View style={styles.badge} />}
+          </TouchableOpacity>
+        </View>
+
+        {/* Empty State */}
+        <View style={styles.centerContentLoading}>
+          <Ionicons name="musical-notes-outline" size={64} color={Colors.mediumGray} />
+          <Text style={styles.emptyStateText}>No posts yet</Text>
+          <Text style={styles.emptyStateSubtext}>Follow some users to see their posts</Text>
+        </View>
       </View>
     );
   }
@@ -79,123 +247,43 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         </View>
         <TouchableOpacity
           style={styles.notificationButton}
-          onPress={() => navigation.navigate('Notifications')}
+          onPress={() => {
+            navigation.navigate('Notifications');
+            setUnreadCount(0);
+          }}
         >
           <Ionicons name="notifications-outline" size={24} color={Colors.black} />
-          <View style={styles.badge} />
+          {unreadCount > 0 && <View style={styles.badge} />}
         </TouchableOpacity>
       </View>
 
-      {/* Scrollable Content */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+      <FlatList
+        ref={flatListRef}
+        data={posts}
+        renderItem={renderPost}
+        keyExtractor={(item) => item.id}
+        pagingEnabled
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[Colors.primary]}
-          />
-        }
-      >
-        {/* Stories */}
-        {/* <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.storiesContainer}>
-          {mockStories.map((story) => (
-            <View key={story.id} style={styles.storyItem}>
-              <View style={[styles.storyCircle, story.isYours && styles.yourStory]}>
-                <View style={styles.storyAvatar}>
-                  {story.isYours && (
-                    <View style={styles.addStoryButton}>
-                      <Ionicons name="add" size={16} color={Colors.white} />
-                    </View>
-                  )}
-                </View>
-              </View>
-              <Text style={styles.storyName}>{story.name}</Text>
-            </View>
-          ))}
-        </ScrollView> */}
-
-        {/* Error Message */}
-        {error && (
-          <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle-outline" size={24} color={Colors.primary} />
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity onPress={loadFeed} style={styles.retryButton}>
-              <Text style={styles.retryText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Posts */}
-        {posts.map((post: Post) => {
-          if (!post || !post.user) return null;
-
-          return (
-          <View key={post.id} style={styles.post}>
-            <View style={styles.postHeader}>
-              <TouchableOpacity
-                style={styles.postUser}
-                onPress={() => navigation.navigate('UserProfile', { username: post.user.username })}
-              >
-                <View style={styles.userAvatar}>
-                  <Text style={styles.userAvatarText}>
-                    {post.user.display_name?.charAt(0).toUpperCase() || post.user.username?.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-                <View>
-                  <Text style={styles.userName}>{post.user.display_name}</Text>
-                  <View style={styles.postMeta}>
-                    <Text style={styles.location}>@{post.user.username}</Text>
-                    <Text style={styles.dot}> · </Text>
-                    <Text style={styles.time}>{formatTimeAgo(post.created_at)}</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={styles.postImage}
-              onPress={() => navigation.navigate('PostDetail', { post })}
-            >
-              {post.album_art_url ? (
-                <Image source={{ uri: post.album_art_url }} style={styles.albumArt} />
-              ) : (
-                <View style={styles.albumArtPlaceholder}>
-                  <Ionicons name="musical-note" size={64} color={Colors.white} />
-                </View>
-              )}
-              <View style={styles.overlay}>
-                <Text style={styles.songTitle}>{post.track_name}</Text>
-                <Text style={styles.artistName}>{post.artist_name}</Text>
-              </View>
-              <View style={styles.playButton}>
-                <Ionicons name="play" size={32} color={Colors.primary} />
-              </View>
-            </TouchableOpacity>
-
-            {post.caption && (
-              <View style={styles.captionContainer}>
-                <Text style={styles.captionText}>
-                  <Text style={styles.captionUsername}>{post.user.username} </Text>
-                  {post.caption}
-                </Text>
-              </View>
-            )}
-          </View>
-          );
+        snapToInterval={POST_HEIGHT}
+        snapToAlignment="start"
+        decelerationRate="fast"
+        onRefresh={onRefresh}
+        refreshing={refreshing}
+        removeClippedSubviews={false}
+        onViewableItemsChanged={({ viewableItems }) => {
+          if (viewableItems.length > 0) {
+            setCurrentIndex(viewableItems[0].index || 0);
+          }
+        }}
+        viewabilityConfig={{
+          itemVisiblePercentThreshold: 50,
+        }}
+        getItemLayout={(data, index) => ({
+          length: POST_HEIGHT,
+          offset: POST_HEIGHT * index,
+          index,
         })}
-
-        {/* Empty State */}
-        {!loading && !error && posts.length === 0 && (
-          <View style={styles.emptyState}>
-            <Ionicons name="musical-notes-outline" size={64} color={Colors.mediumGray} />
-            <Text style={styles.emptyStateText}>No posts yet</Text>
-            <Text style={styles.emptyStateSubtext}>Follow some users to see their posts</Text>
-          </View>
-        )}
-      </ScrollView>
+      />
     </View>
   );
 };
@@ -205,37 +293,33 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.white,
   },
-  centerContent: {
+  centerContentLoading: {
     justifyContent: 'center',
     alignItems: 'center',
   },
+  postContainer: {
+    width: SCREEN_WIDTH,
+    height: POST_HEIGHT,
+    position: 'relative',
+  },
   header: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 45,
-    paddingBottom: 12,
-    backgroundColor: Colors.white,
+    paddingTop: 50,
+    paddingBottom: 15,
     zIndex: 1000,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingTop: HEADER_HEIGHT + 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    // backdropFilter: 'blur(10px)',
   },
   logoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   logo: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     backgroundColor: Colors.primary,
     borderRadius: 8,
     alignItems: 'center',
@@ -244,11 +328,11 @@ const styles = StyleSheet.create({
   },
   logoText: {
     color: Colors.white,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
   },
   appName: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: Colors.black,
   },
@@ -264,217 +348,201 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: Colors.primary,
   },
-  storiesContainer: {
-    paddingHorizontal: 15,
-    marginBottom: 20,
+  // Background album art (blurred)
+  albumArtContainer: {
+    position: 'absolute',
+    width: SCREEN_WIDTH,
+    height: POST_HEIGHT,
+    top: 0,
+    left: 0,
   },
-  storyItem: {
-    marginRight: 15,
-    alignItems: 'center',
-  },
-  storyCircle: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    borderWidth: 2,
-    borderColor: Colors.primary,
-    padding: 3,
-    marginBottom: 5,
-  },
-  yourStory: {
-    borderColor: Colors.mediumGray,
-  },
-  storyAvatar: {
+  fullScreenAlbumArt: {
     width: '100%',
     height: '100%',
-    borderRadius: 32,
-    backgroundColor: Colors.lightGray,
+  },
+  fullScreenAlbumArtPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  darkOverlay: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  // Center content
+  centerContent: {
+    position: 'absolute',
+    top: '15%',
+    left: 0,
+    right: 0,
+    // transform: [{ translateY: -50 }],
+    alignItems: 'center',
+    paddingHorizontal: 30,
+  },
+  albumArtCard: {
+    width: SCREEN_WIDTH * 0.75,
+    height: SCREEN_WIDTH * 0.75,
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 10,
     position: 'relative',
   },
-  addStoryButton: {
+  albumArtMain: {
+    width: '100%',
+    height: '100%',
+  },
+  albumArtMainPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playButtonOverlay: {
     position: 'absolute',
-    bottom: -2,
-    right: -2,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: Colors.primary,
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -32 }, { translateY: -32 }],
+  },
+  trackInfo: {
+    marginTop: 25,
     alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: Colors.white,
+    width: '100%',
   },
-  storyName: {
-    fontSize: 12,
-    color: Colors.black,
-  },
-  errorContainer: {
-    backgroundColor: '#FFE8EF',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    marginHorizontal: 15,
-    marginBottom: 20,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  errorText: {
-    flex: 1,
-    fontSize: 14,
-    color: Colors.primary,
-    fontWeight: '500',
-  },
-  retryButton: {
-    paddingHorizontal: 15,
-    paddingVertical: 6,
-    backgroundColor: Colors.primary,
-    borderRadius: 15,
-  },
-  retryText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.white,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 40,
-  },
-  emptyStateText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.black,
-    marginTop: 15,
-    marginBottom: 5,
-  },
-  emptyStateSubtext: {
-    fontSize: 14,
-    color: Colors.darkGray,
-    textAlign: 'center',
-  },
-  post: {
-    marginBottom: 20,
-  },
-  postHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 15,
-    marginBottom: 12,
-  },
-  postUser: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  userAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.primary,
-    marginRight: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userAvatarText: {
-    fontSize: 18,
+  trackName: {
+    fontSize: 24,
     fontWeight: 'bold',
     color: Colors.white,
+    textAlign: 'center',
+    marginBottom: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
-  userName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.black,
+  artistName: {
+    fontSize: 18,
+    color: Colors.white,
+    textAlign: 'center',
+    opacity: 0.9,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
-  postMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  location: {
-    fontSize: 12,
-    color: Colors.darkGray,
-  },
-  dot: {
-    fontSize: 12,
-    color: Colors.darkGray,
-  },
-  time: {
-    fontSize: 12,
-    color: Colors.darkGray,
-  },
-  postImage: {
-    width: '100%',
-    height: 380,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  albumArt: {
-    width: '100%',
-    height: '100%',
-    position: 'absolute',
-  },
-  albumArtPlaceholder: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'absolute',
-  },
-  overlay: {
+  // Bottom info
+  bottomInfo: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 15,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 20,
+    paddingBottom: 120,
+    paddingTop: 20,
+    backgroundColor: 'transparent',
   },
-  songTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.white,
-    marginBottom: 4,
+  userInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
   },
-  artistName: {
-    fontSize: 14,
-    color: Colors.white,
+  userAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: Colors.white,
   },
-  playButton: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: Colors.white,
+  userAvatarPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'absolute',
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: Colors.white,
   },
-  captionContainer: {
-    paddingHorizontal: 15,
-    paddingVertical: 15,
+  userAvatarText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: Colors.white,
   },
-  captionText: {
+  userTextInfo: {
+    flex: 1,
+  },
+  displayName: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.white,
+    marginBottom: 2,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  username: {
     fontSize: 14,
-    color: Colors.black,
-    lineHeight: 20,
+    color: Colors.white,
+    opacity: 0.9,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
-  captionUsername: {
+  caption: {
+    fontSize: 15,
+    color: Colors.white,
+    lineHeight: 16,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  postIndicator: {
+    alignItems: 'center',
+    marginTop: 15,
+  },
+  postIndicatorText: {
+    fontSize: 13,
+    color: Colors.white,
+    opacity: 0.7,
+    fontWeight: '600',
+  },
+  // Error and empty states
+  errorText: {
+    fontSize: 16,
+    color: Colors.white,
+    marginTop: 15,
+    textAlign: 'center',
+  },
+  retryButton: {
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    backgroundColor: Colors.primary,
+    borderRadius: 25,
+    marginTop: 20,
+  },
+  retryText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.white,
+  },
+  emptyStateText: {
+    fontSize: 20,
     fontWeight: '600',
     color: Colors.black,
+    marginTop: 15,
+    marginBottom: 8,
   },
-  postActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingTop: 8,
-  },
-  actionRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 15,
+  emptyStateSubtext: {
+    fontSize: 15,
+    color: Colors.darkGray,
+    textAlign: 'center',
   },
 });

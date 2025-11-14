@@ -28,6 +28,14 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow AUX to use Face ID for secure authentication."
+        }
+      ]
+    ]
   }
 }

@@ -2,17 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Platform } from 'react-native';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
+import { useBiometricAuth } from '../hooks/useBiometricAuth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Enable dismissing the browser on completion (for mobile)
 WebBrowser.maybeCompleteAuthSession();
 
 interface WelcomeScreenProps {
   onGoogleSignIn: (idToken: string) => Promise<void>;
+  onBiometricAuth?: () => Promise<void>;
 }
 
-export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onGoogleSignIn }) => {
+export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onGoogleSignIn, onBiometricAuth }) => {
   const [loading, setLoading] = useState(false);
+  const [biometricLoading, setBiometricLoading] = useState(false);
+  const [showBiometric, setShowBiometric] = useState(false);
+  const { isBiometricSupported, biometricType, authenticate, getBiometricLabel } = useBiometricAuth();
 
   // Get the redirect URI - use custom scheme for both web and mobile
   const redirectUri = Platform.OS === 'web'
@@ -24,6 +31,23 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onGoogleSignIn }) 
     clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     redirectUri: redirectUri,
   });
+
+  // Check if biometric auth should be available
+  useEffect(() => {
+    checkBiometricAvailability();
+  }, []);
+
+  const checkBiometricAvailability = async () => {
+    try {
+      const biometricEnabled = await AsyncStorage.getItem('biometric_enabled');
+      const hasRefreshToken = await AsyncStorage.getItem('refresh_token');
+
+      // Show biometric option only if it's enabled and user has a refresh token (was previously signed in)
+      setShowBiometric(biometricEnabled === 'true' && !!hasRefreshToken && isBiometricSupported);
+    } catch (error) {
+      console.error('Error checking biometric availability:', error);
+    }
+  };
 
   // Handle Expo Auth Session response
   useEffect(() => {
@@ -57,10 +81,28 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onGoogleSignIn }) 
     promptAsync();
   };
 
+  const handleBiometricSignIn = async () => {
+    if (!onBiometricAuth) return;
+
+    setBiometricLoading(true);
+    try {
+      const result = await authenticate('Sign in to AUX');
+      if (result.success) {
+        await onBiometricAuth();
+      } else {
+        Alert.alert('Authentication Failed', result.error || 'Could not authenticate with biometrics');
+      }
+    } catch (error: any) {
+      console.error('Biometric auth error:', error);
+      Alert.alert('Error', 'An error occurred during biometric authentication');
+    } finally {
+      setBiometricLoading(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.language}>English (US)</Text>
       </View>
 
       <View style={styles.logoContainer}>
@@ -72,6 +114,28 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onGoogleSignIn }) 
       </View>
 
       <View style={styles.authSection}>
+        {showBiometric && (
+          <TouchableOpacity
+            style={[styles.biometricButton, biometricLoading && styles.disabledButton]}
+            onPress={handleBiometricSignIn}
+            disabled={biometricLoading}
+          >
+            {biometricLoading ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <>
+                <Ionicons
+                  name={biometricType === 'facial' ? 'scan-outline' : 'finger-print-outline'}
+                  size={24}
+                  color={Colors.white}
+                  style={styles.biometricIcon}
+                />
+                <Text style={styles.biometricButtonLabel}>Sign in with {getBiometricLabel()}</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={[styles.googleButton, (loading || !request) && styles.disabledButton]}
           onPress={handleGoogleSignIn}
@@ -134,6 +198,24 @@ const styles = StyleSheet.create({
   },
   authSection: {
     paddingHorizontal: 30,
+  },
+  biometricButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: 25,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginBottom: 15,
+  },
+  biometricIcon: {
+    marginRight: 10,
+  },
+  biometricButtonLabel: {
+    fontSize: 15,
+    color: Colors.white,
+    fontWeight: '600',
   },
   googleButton: {
     flexDirection: 'row',

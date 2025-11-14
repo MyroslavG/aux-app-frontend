@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
 
@@ -17,6 +17,10 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ route, navigation }) => 
   const { userName = 'Shane Smith' } = route?.params || {};
   const [message, setMessage] = useState('');
 
+  const showUnderDevelopment = () => {
+    Alert.alert('Under Development', 'Messaging feature is coming soon!');
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -33,9 +37,6 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ route, navigation }) => 
             <Text style={styles.onlineStatus}>● Online</Text>
           </View>
         </View>
-        <TouchableOpacity>
-          <Ionicons name="call" size={24} color={Colors.black} />
-        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.messagesContainer}>
@@ -54,18 +55,24 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ route, navigation }) => 
         ))}
       </ScrollView>
 
+      <View style={styles.devNotice}>
+        <Ionicons name="construct-outline" size={20} color={Colors.primary} />
+        <Text style={styles.devNoticeText}>Messaging under development</Text>
+      </View>
+
       <View style={styles.inputContainer}>
-        <TouchableOpacity style={styles.addButton}>
-          <Ionicons name="add" size={24} color={Colors.darkGray} />
+        <TouchableOpacity style={styles.addButton} onPress={showUnderDevelopment} disabled>
+          <Ionicons name="add" size={24} color={Colors.mediumGray} />
         </TouchableOpacity>
         <TextInput
-          style={styles.input}
+          style={styles.inputDisabled}
           placeholder="Type Message..."
-          placeholderTextColor={Colors.darkGray}
+          placeholderTextColor={Colors.mediumGray}
           value={message}
           onChangeText={setMessage}
+          editable={false}
         />
-        <TouchableOpacity style={styles.sendButton}>
+        <TouchableOpacity style={styles.sendButtonDisabled} onPress={showUnderDevelopment} disabled>
           <Ionicons name="send" size={20} color={Colors.white} />
         </TouchableOpacity>
       </View>
@@ -149,6 +156,24 @@ const styles = StyleSheet.create({
     color: Colors.white,
     opacity: 0.8,
   },
+  devNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFE8EF',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    marginHorizontal: 20,
+    marginTop: 10,
+    marginBottom: 5,
+    borderRadius: 8,
+    gap: 8,
+  },
+  devNoticeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -170,6 +195,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.black,
   },
+  inputDisabled: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 25,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: Colors.mediumGray,
+  },
   sendButton: {
     width: 44,
     height: 44,
@@ -178,5 +212,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 10,
+  },
+  sendButtonDisabled: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.mediumGray,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+    opacity: 0.5,
   },
 });

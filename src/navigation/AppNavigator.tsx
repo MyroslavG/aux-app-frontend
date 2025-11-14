@@ -5,11 +5,7 @@ import { SplashScreen } from '../screens/SplashScreen';
 import { WelcomeScreen } from '../screens/WelcomeScreen';
 import { BottomTabNavigator } from './BottomTabNavigator';
 import { ChatScreen } from '../screens/ChatScreen';
-import { NotificationsScreen } from '../screens/NotificationsScreen';
-import { SearchScreen } from '../screens/SearchScreen';
-import { UserProfileScreen } from '../screens/UserProfileScreen';
 import { NewPostScreen } from '../screens/NewPostScreen';
-import { PostDetailScreen } from '../screens/PostDetailScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { useAuth } from '../context/AuthContext';
 
@@ -17,25 +13,30 @@ const Stack = createNativeStackNavigator();
 
 export const AppNavigator: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
-  const { isAuthenticated, signIn } = useAuth();
+  const { isAuthenticated, signIn, authenticateWithBiometric, refreshUser } = useAuth();
 
   if (showSplash) {
     return <SplashScreen onFinish={() => setShowSplash(false)} />;
   }
 
+  const handleBiometricAuth = async () => {
+    const success = await authenticateWithBiometric();
+    if (success) {
+      // Biometric auth successful, tokens should already be in storage
+      // Refresh user data to trigger authentication state
+      await refreshUser();
+    }
+  };
+
   return (
     <NavigationContainer>
       {!isAuthenticated ? (
-        <WelcomeScreen onGoogleSignIn={signIn} />
+        <WelcomeScreen onGoogleSignIn={signIn} onBiometricAuth={handleBiometricAuth} />
       ) : (
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
           <Stack.Screen name="Chat" component={ChatScreen} />
-          <Stack.Screen name="Notifications" component={NotificationsScreen} />
-          <Stack.Screen name="Search" component={SearchScreen} />
-          <Stack.Screen name="UserProfile" component={UserProfileScreen} />
           <Stack.Screen name="NewPost" component={NewPostScreen} />
-          <Stack.Screen name="PostDetail" component={PostDetailScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
         </Stack.Navigator>
       )}

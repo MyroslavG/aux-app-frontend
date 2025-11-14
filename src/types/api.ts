@@ -20,6 +20,7 @@ export interface UserWithStats extends User {
 // Auth types
 export interface AuthResponse {
   access_token: string;
+  refresh_token: string;
   token_type: string;
   user: User;
 }
@@ -33,6 +34,7 @@ export interface Post {
   artist_name: string;
   album_art_url?: string;
   caption?: string;
+  spotify_uri?: string; // Spotify URI for deep linking
   created_at: string;
   updated_at: string;
   user: User;
@@ -56,6 +58,7 @@ export interface SpotifyTrack {
   album_art_url?: string;
   preview_url?: string;
   duration_ms: number;
+  uri?: string; // Spotify URI for deep linking (e.g., spotify:track:6rqhFgbbKwnb9MLmUQDhG6)
 }
 
 export interface SpotifyStatus {
@@ -66,14 +69,27 @@ export interface SpotifyStatus {
 // Notification types
 export type NotificationType = 'like' | 'comment' | 'follow';
 
+export interface NotificationActor {
+  id: string;
+  username: string;
+  display_name?: string;
+  profile_image_url?: string;
+}
+
 export interface Notification {
   id: string;
-  type: NotificationType;
-  message: string;
+  user_id: string;
+  type: string;
+  title: string;
+  body?: string;
+  data?: {
+    follower_id?: string;
+    post_id?: string;
+    [key: string]: any;
+  };
   is_read: boolean;
   created_at: string;
-  actor: User;
-  post_id?: string;
+  actor?: NotificationActor; // New field with current user data
 }
 
 // API Response types

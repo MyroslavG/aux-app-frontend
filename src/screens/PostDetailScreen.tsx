@@ -1,8 +1,10 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
 import { Post } from '../types/api';
+import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api';
 
 interface PostDetailScreenProps {
   route: any;
@@ -11,9 +13,74 @@ interface PostDetailScreenProps {
 
 export const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navigation }) => {
   const { post } = route?.params || {};
+  const { user: currentUser } = useAuth();
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editedCaption, setEditedCaption] = useState(post?.caption || '');
+  const [updating, setUpdating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const isOwnPost = currentUser?.id === post?.user?.id;
 
   const showUnderDevelopment = () => {
     Alert.alert('Under Development', 'This feature is coming soon!');
+  };
+
+  const handleEditPost = () => {
+    setEditedCaption(post?.caption || '');
+    setEditModalVisible(true);
+  };
+
+  const handleUpdatePost = async () => {
+    if (!post) return;
+
+    setUpdating(true);
+    try {
+      await api.updatePost(post.id, editedCaption);
+      setEditModalVisible(false);
+      Alert.alert('Success', 'Post updated successfully!', [
+        {
+          text: 'OK',
+          onPress: () => navigation.goBack(),
+        },
+      ]);
+    } catch (error: any) {
+      console.error('Failed to update post:', error);
+      Alert.alert('Error', error.response?.data?.detail || 'Failed to update post');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleDeletePost = () => {
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post? This action cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            if (!post) return;
+
+            setDeleting(true);
+            try {
+              await api.deletePost(post.id);
+              Alert.alert('Success', 'Post deleted successfully!');
+              navigation.goBack();
+            } catch (error: any) {
+              console.error('Failed to delete post:', error);
+              Alert.alert('Error', error.response?.data?.detail || 'Failed to delete post');
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const formatTimeAgo = (dateString: string) => {
@@ -25,6 +92,31 @@ export const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navig
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
     return `${Math.floor(seconds / 86400)}d ago`;
+  };
+
+  const handlePlayOnSpotify = async () => {
+    if (!post?.spotify_track_id) return;
+
+    // Construct Spotify URI from track ID if URI is not available
+    const spotifyUri = post.spotify_uri || `spotify:track:${post.spotify_track_id}`;
+    const spotifyWebUrl = `https://open.spotify.com/track/${post.spotify_track_id}`;
+
+    try {
+      // Try to open in Spotify app first
+      const canOpen = await Linking.canOpenURL(spotifyUri);
+      if (canOpen) {
+        await Linking.openURL(spotifyUri);
+      } else {
+        // Fallback to web URL if Spotify app is not installed
+        await Linking.openURL(spotifyWebUrl);
+      }
+    } catch (error) {
+      console.error('Failed to open Spotify:', error);
+      Alert.alert(
+        'Cannot Open Spotify',
+        'Please make sure you have Spotify installed or try again later.'
+      );
+    }
   };
 
   if (!post || !post.user) {
@@ -41,35 +133,71 @@ export const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navig
 
   return (
     <View style={styles.container}>
-      <View style={styles.postImageContainer}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={Colors.white} />
-        </TouchableOpacity>
+      {/* Header Section on White Background */}
+      <View style={styles.headerContainer}>
+        <View style={styles.topBar}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={Colors.black} />
+          </TouchableOpacity>
 
-        <View style={styles.postHeader}>
-          <View style={styles.headerRow}>
-            <TouchableOpacity
-              style={styles.userInfo}
-              onPress={() => navigation.navigate('UserProfile', { username: post.user.username })}
-            >
+          <TouchableOpacity
+            style={styles.userInfo}
+            onPress={() => navigation.navigate('UserProfile', { username: post.user.username })}
+          >
+            {post.user.profile_image_url ? (
+              <Image source={{ uri: post.user.profile_image_url }} style={styles.avatarImage} />
+            ) : (
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>
                   {post.user.display_name?.charAt(0).toUpperCase() || post.user.username?.charAt(0).toUpperCase()}
                 </Text>
               </View>
-              <View>
-                <Text style={styles.userName}>{post.user.display_name || post.user.username}</Text>
-                <View style={styles.postMeta}>
-                  <Text style={styles.location}>@{post.user.username}</Text>
-                  <Text style={styles.dot}> · </Text>
-                  <Text style={styles.time}>{formatTimeAgo(post.created_at)}</Text>
-                </View>
+            )}
+            <View style={styles.userTextInfo}>
+              <Text style={styles.userName}>{post.user.display_name || post.user.username}</Text>
+              <View style={styles.postMeta}>
+                <Text style={styles.location}>@{post.user.username}</Text>
+                <Text style={styles.dot}> · </Text>
+                <Text style={styles.time}>{formatTimeAgo(post.created_at)}</Text>
               </View>
-            </TouchableOpacity>
-          </View>
-        </View>
+            </View>
+          </TouchableOpacity>
 
-        <View style={styles.postImage}>
+          {isOwnPost && (
+            <TouchableOpacity style={styles.moreButtonHeader} onPress={() => {
+              Alert.alert(
+                'Post Options',
+                'What would you like to do?',
+                [
+                  {
+                    text: 'Edit Caption',
+                    onPress: handleEditPost,
+                  },
+                  {
+                    text: 'Delete Post',
+                    onPress: handleDeletePost,
+                    style: 'destructive',
+                  },
+                  {
+                    text: 'Cancel',
+                    style: 'cancel',
+                  },
+                ]
+              );
+            }}>
+              <Ionicons name="ellipsis-horizontal" size={24} color={Colors.black} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Album Art Section */}
+      <View style={styles.postImageContainer}>
+        <TouchableOpacity
+          style={styles.postImage}
+          onPress={handlePlayOnSpotify}
+          activeOpacity={0.9}
+        >
           {post.album_art_url ? (
             <Image source={{ uri: post.album_art_url }} style={styles.albumArt} />
           ) : (
@@ -80,7 +208,7 @@ export const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navig
           <View style={styles.playButtonLarge}>
             <Ionicons name="play" size={48} color={Colors.primary} />
           </View>
-        </View>
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content}>
@@ -131,6 +259,67 @@ export const PostDetailScreen: React.FC<PostDetailScreenProps> = ({ route, navig
           <Text style={styles.noComments}>Comments feature coming soon</Text>
         </View>
       </ScrollView>
+
+      {/* Edit Modal */}
+      <Modal
+        visible={editModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlayTouchable}
+            activeOpacity={1}
+            onPress={() => setEditModalVisible(false)}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              style={styles.modalContent}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.modalHeader}>
+                <TouchableOpacity onPress={() => setEditModalVisible(false)}>
+                  <Text style={styles.modalCancel}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={styles.modalTitle}>Edit Caption</Text>
+                <TouchableOpacity onPress={handleUpdatePost} disabled={updating}>
+                  {updating ? (
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                  ) : (
+                    <Text style={styles.modalSave}>Save</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+                <TextInput
+                  style={styles.captionInput}
+                  placeholder="Add a caption..."
+                  placeholderTextColor={Colors.mediumGray}
+                  value={editedCaption}
+                  onChangeText={setEditedCaption}
+                  multiline
+                  maxLength={500}
+                  autoFocus
+                />
+                <Text style={styles.characterCount}>{editedCaption.length}/500</Text>
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Deleting Overlay */}
+      {deleting && (
+        <View style={styles.deletingOverlay}>
+          <ActivityIndicator size="large" color={Colors.white} />
+          <Text style={styles.deletingText}>Deleting post...</Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -161,28 +350,32 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.white,
   },
+  headerContainer: {
+    backgroundColor: Colors.white,
+    paddingTop: 55,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.lightGray,
+  },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
   postImageContainer: {
     position: 'relative',
   },
   backButton: {
-    position: 'absolute',
-    top: 50,
-    left: 20,
-    zIndex: 10,
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: Colors.lightGray,
     alignItems: 'center',
     justifyContent: 'center',
   },
   postHeader: {
-    position: 'absolute',
-    top: 50,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 70,
-    zIndex: 5,
+    paddingHorizontal: 20,
   },
   headerRow: {
     flexDirection: 'row',
@@ -193,14 +386,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    marginLeft: 15
+  },
+  userTextInfo: {
+    flex: 1,
   },
   avatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 10,
+  },
+  avatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     marginRight: 10,
   },
   avatarText: {
@@ -211,7 +414,7 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.white,
+    color: Colors.black,
   },
   postMeta: {
     flexDirection: 'row',
@@ -220,15 +423,54 @@ const styles = StyleSheet.create({
   },
   location: {
     fontSize: 12,
-    color: Colors.white,
+    color: Colors.darkGray,
   },
   dot: {
     fontSize: 12,
-    color: Colors.white,
+    marginLeft: 4,
+    color: Colors.darkGray,
   },
   time: {
     fontSize: 12,
-    color: Colors.white,
+    marginLeft: 4,
+    color: Colors.darkGray,
+  },
+  compactAlbumSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 15,
+    marginHorizontal: 20,
+    backgroundColor: Colors.lightGray,
+    borderRadius: 8,
+    padding: 10,
+  },
+  compactAlbumArt: {
+    width: 50,
+    height: 50,
+    borderRadius: 6,
+    marginRight: 12,
+  },
+  compactAlbumArtPlaceholder: {
+    width: 50,
+    height: 50,
+    borderRadius: 6,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  compactSongInfo: {
+    flex: 1,
+  },
+  compactSongTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.black,
+    marginBottom: 2,
+  },
+  compactArtistName: {
+    fontSize: 12,
+    color: Colors.darkGray,
   },
   headerActions: {
     flexDirection: 'row',
@@ -253,7 +495,7 @@ const styles = StyleSheet.create({
   },
   postImage: {
     width: '100%',
-    height: 600,
+    height: 400,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -306,7 +548,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 20,
+    paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: Colors.lightGray,
   },
@@ -367,6 +609,7 @@ const styles = StyleSheet.create({
   commentsSection: {
     paddingHorizontal: 20,
     paddingVertical: 20,
+    marginBottom: 60,
   },
   sectionTitle: {
     fontSize: 18,
@@ -379,5 +622,94 @@ const styles = StyleSheet.create({
     color: Colors.darkGray,
     textAlign: 'center',
     marginTop: 20,
+  },
+  moreButtonHeader: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.lightGray,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalOverlayTouchable: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
+    minHeight: 300,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.lightGray,
+  },
+  modalCancel: {
+    fontSize: 16,
+    color: Colors.darkGray,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.black,
+  },
+  modalSave: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+  modalBody: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 20,
+    flexGrow: 1,
+  },
+  captionInput: {
+    fontSize: 16,
+    color: Colors.black,
+    minHeight: 150,
+    maxHeight: 400,
+    textAlignVertical: 'top',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: Colors.lightGray,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  characterCount: {
+    fontSize: 12,
+    color: Colors.mediumGray,
+    textAlign: 'right',
+    marginTop: 10,
+  },
+  deletingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  deletingText: {
+    fontSize: 16,
+    color: Colors.white,
+    marginTop: 15,
+    fontWeight: '500',
   },
 });

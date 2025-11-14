@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { Colors } from '../constants/colors';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
@@ -23,6 +24,15 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
       loadUserProfile();
     }
   }, [user]);
+
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (user) {
+        loadUserProfile();
+      }
+    }, [user])
+  );
 
   const loadUserProfile = async () => {
     if (!user) return;
@@ -85,11 +95,15 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
 
       <View style={styles.profileSection}>
         <View style={styles.avatarContainer}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {user?.display_name?.charAt(0).toUpperCase() || user?.username?.charAt(0).toUpperCase() || 'U'}
-            </Text>
-          </View>
+          {user?.profile_image_url ? (
+            <Image source={{ uri: user.profile_image_url }} style={styles.avatarImage} />
+          ) : (
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {user?.display_name?.charAt(0).toUpperCase() || user?.username?.charAt(0).toUpperCase() || 'U'}
+              </Text>
+            </View>
+          )}
         </View>
 
         <TouchableOpacity
@@ -166,6 +180,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
                   <Text style={styles.postArtist} numberOfLines={1}>
                     {post.artist_name}
                   </Text>
+                  {post.caption && (
+                    <Text style={styles.postCaption} numberOfLines={2}>
+                      {post.caption}
+                    </Text>
+                  )}
                 </View>
               </TouchableOpacity>
             ))}
@@ -251,6 +270,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+  },
   avatarText: {
     fontSize: 42,
     fontWeight: 'bold',
@@ -286,7 +310,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.black,
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: 20,
   },
   location: {
     fontSize: 14,
@@ -384,6 +408,12 @@ const styles = StyleSheet.create({
   postArtist: {
     fontSize: 14,
     color: Colors.darkGray,
+    marginBottom: 4,
+  },
+  postCaption: {
+    fontSize: 13,
+    color: Colors.darkGray,
+    lineHeight: 18,
   },
   signOutButton: {
     backgroundColor: Colors.white,

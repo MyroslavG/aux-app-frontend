@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
@@ -20,21 +20,45 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  const handleSearch = async () => {
-    if (!searchText.trim()) return;
-
-    setLoading(true);
-    try {
-      const results = await api.searchUsers(searchText.trim());
-      setSearchResults(results);
-    } catch (error) {
-      console.error('Search error:', error);
-      setSearchResults([]);
-    } finally {
-      setLoading(false);
+  // Perform search automatically when searchText changes
+  useEffect(() => {
+    // Clear previous timeout
+    if (debounceTimeout.current) {
+      clearTimeout(debounceTimeout.current);
     }
-  };
+
+    // If search text is empty, clear results
+    if (!searchText.trim()) {
+      setSearchResults([]);
+      setLoading(false);
+      return;
+    }
+
+    // Set loading state immediately
+    setLoading(true);
+
+    // Debounce the search by 500ms
+    debounceTimeout.current = setTimeout(async () => {
+      try {
+        const results = await api.searchUsers(searchText.trim());
+        setSearchResults(results);
+      } catch (error) {
+        console.error('Search error:', error);
+        setSearchResults([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 500);
+
+    // Cleanup function
+    return () => {
+      if (debounceTimeout.current) {
+        clearTimeout(debounceTimeout.current);
+      }
+    };
+  }, [searchText]);
 
   const handleUserPress = (username: string) => {
     navigation.navigate('UserProfile', { username });
@@ -54,8 +78,6 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
             placeholderTextColor={Colors.darkGray}
             value={searchText}
             onChangeText={setSearchText}
-            onSubmitEditing={handleSearch}
-            returnKeyType="search"
             autoFocus
           />
           {searchText.length > 0 && (

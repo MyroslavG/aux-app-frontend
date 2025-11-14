@@ -53,7 +53,15 @@ export const NewPostScreen: React.FC<NewPostScreenProps> = ({ navigation }) => {
         [
           {
             text: 'OK',
-            onPress: () => navigation.navigate('Home'),
+            onPress: () => {
+              // Clear all form state
+              setSelectedTrack(null);
+              setCaption('');
+              setSearchQuery('');
+              setSearchResults([]);
+              // Navigate back to the main tabs, which will show Home tab
+              navigation.goBack();
+            },
           },
         ]
       );
@@ -146,7 +154,14 @@ export const NewPostScreen: React.FC<NewPostScreenProps> = ({ navigation }) => {
         <View style={styles.actions}>
           <TouchableOpacity
             style={styles.cancelButton}
-            onPress={() => navigation.goBack()}
+            onPress={() => {
+              // Clear all form state
+              setSelectedTrack(null);
+              setCaption('');
+              setSearchQuery('');
+              setSearchResults([]);
+              navigation.goBack();
+            }}
           >
             <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>

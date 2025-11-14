@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { Colors } from '../constants/colors';
 import { api } from '../services/api';
 import { UserWithStats, Post } from '../types/api';
@@ -26,22 +27,26 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({ route, nav
     }
   }, [username]);
 
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (username) {
+        loadUserProfile();
+      }
+    }, [username])
+  );
+
   const loadUserProfile = async () => {
     if (!username) return;
 
     try {
       setError(null);
-      const [profileData, feedData] = await Promise.all([
-        api.getUserProfile(username),
-        api.getFeed(50, 0)
-      ]);
-
+      const profileData = await api.getUserProfile(username);
       setUserProfile(profileData);
-      // Filter posts by this user
-      const userPosts = (feedData.items || feedData).filter(
-        (post: Post) => post.user_id === profileData.id
-      );
-      setPosts(userPosts);
+
+      // Fetch posts specifically for this user
+      const postsData = await api.getUserPosts(username);
+      setPosts(postsData.items || postsData);
     } catch (err: any) {
       console.error('Failed to load profile:', err);
       setError(err.response?.data?.detail || 'Failed to load profile');
@@ -116,11 +121,15 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({ route, nav
 
       <View style={styles.profileSection}>
         <View style={styles.avatarContainer}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {userProfile.display_name?.charAt(0).toUpperCase() || userProfile.username?.charAt(0).toUpperCase()}
-            </Text>
-          </View>
+          {userProfile.profile_image_url ? (
+            <Image source={{ uri: userProfile.profile_image_url }} style={styles.avatarImage} />
+          ) : (
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {userProfile.display_name?.charAt(0).toUpperCase() || userProfile.username?.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
         </View>
 
         {!isOwnProfile && (
@@ -157,14 +166,20 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({ route, nav
             <Text style={styles.statValue}>{posts.length}</Text>
             <Text style={styles.statLabel}>Posts</Text>
           </View>
-          <View style={styles.statItem}>
+          <TouchableOpacity
+            style={styles.statItem}
+            onPress={() => navigation.navigate('Followers', { username: userProfile.username })}
+          >
             <Text style={styles.statValue}>{userProfile.followers_count}</Text>
             <Text style={styles.statLabel}>Followers</Text>
-          </View>
-          <View style={styles.statItem}>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.statItem}
+            onPress={() => navigation.navigate('Following', { username: userProfile.username })}
+          >
             <Text style={styles.statValue}>{userProfile.following_count}</Text>
             <Text style={styles.statLabel}>Following</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {posts.length > 0 ? (
@@ -194,6 +209,11 @@ export const UserProfileScreen: React.FC<UserProfileScreenProps> = ({ route, nav
                   <Text style={styles.postArtist} numberOfLines={1}>
                     {post.artist_name}
                   </Text>
+                  {post.caption && (
+                    <Text style={styles.postCaption} numberOfLines={2}>
+                      {post.caption}
+                    </Text>
+                  )}
                 </View>
               </TouchableOpacity>
             ))}
@@ -274,6 +294,13 @@ const styles = StyleSheet.create({
     borderColor: Colors.white,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 4,
+    borderColor: Colors.white,
   },
   avatarText: {
     fontSize: 42,
@@ -400,6 +427,12 @@ const styles = StyleSheet.create({
   postArtist: {
     fontSize: 14,
     color: Colors.darkGray,
+    marginBottom: 4,
+  },
+  postCaption: {
+    fontSize: 13,
+    color: Colors.darkGray,
+    lineHeight: 18,
   },
   emptyState: {
     alignItems: 'center',

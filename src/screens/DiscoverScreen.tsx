@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
 import { api } from '../services/api';
@@ -20,24 +20,45 @@ export const DiscoverScreen: React.FC<DiscoverScreenProps> = ({ navigation }) =>
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  const handleSearch = async () => {
+  // Perform search automatically when searchText changes
+  useEffect(() => {
+    // Clear previous timeout
+    if (debounceTimeout.current) {
+      clearTimeout(debounceTimeout.current);
+    }
+
+    // If search text is empty, clear results
     if (!searchText.trim()) {
       setSearchResults([]);
+      setLoading(false);
       return;
     }
 
+    // Set loading state immediately
     setLoading(true);
-    try {
-      const results = await api.searchUsers(searchText.trim());
-      setSearchResults(results);
-    } catch (error) {
-      console.error('Search error:', error);
-      setSearchResults([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+
+    // Debounce the search by 500ms
+    debounceTimeout.current = setTimeout(async () => {
+      try {
+        const results = await api.searchUsers(searchText.trim());
+        setSearchResults(results);
+      } catch (error) {
+        console.error('Search error:', error);
+        setSearchResults([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 500);
+
+    // Cleanup function
+    return () => {
+      if (debounceTimeout.current) {
+        clearTimeout(debounceTimeout.current);
+      }
+    };
+  }, [searchText]);
 
   const handleUserPress = (username: string) => {
     navigation.navigate('UserProfile', { username });
@@ -57,8 +78,6 @@ export const DiscoverScreen: React.FC<DiscoverScreenProps> = ({ navigation }) =>
           placeholderTextColor={Colors.darkGray}
           value={searchText}
           onChangeText={setSearchText}
-          onSubmitEditing={handleSearch}
-          returnKeyType="search"
         />
         {searchText.length > 0 && (
           <TouchableOpacity onPress={() => {
@@ -85,11 +104,15 @@ export const DiscoverScreen: React.FC<DiscoverScreenProps> = ({ navigation }) =>
                 style={styles.userItem}
                 onPress={() => handleUserPress(user.username)}
               >
-                <View style={styles.userAvatar}>
-                  <Text style={styles.avatarText}>
-                    {user.display_name?.charAt(0).toUpperCase() || user.username?.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
+                {user.profile_image_url ? (
+                  <Image source={{ uri: user.profile_image_url }} style={styles.userAvatarImage} />
+                ) : (
+                  <View style={styles.userAvatar}>
+                    <Text style={styles.avatarText}>
+                      {user.display_name?.charAt(0).toUpperCase() || user.username?.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
                 <View style={styles.userInfo}>
                   <Text style={styles.userName}>{user.display_name}</Text>
                   <Text style={styles.userHandle}>@{user.username}</Text>
@@ -215,6 +238,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 15,
+  },
+  userAvatarImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     marginRight: 15,
   },
   avatarText: {

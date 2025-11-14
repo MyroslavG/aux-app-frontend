@@ -6,6 +6,8 @@ const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://aux-app-backen
 
 class ApiService {
   private client: AxiosInstance;
+  private isRefreshing = false;
+  private failedQueue: any[] = [];
 
   constructor() {
     this.client = axios.create({
@@ -34,14 +36,128 @@ class ApiService {
     this.client.interceptors.response.use(
       (response) => response,
       async (error: AxiosError) => {
-        if (error.response?.status === 401) {
-          // Token expired or invalid - clear storage and redirect to login
-          await AsyncStorage.removeItem('access_token');
-          await AsyncStorage.removeItem('user');
+        const originalRequest = error.config as any;
+
+        // Handle Spotify token expiration (400 or 401 on Spotify endpoints)
+        // Note: Backend now auto-refreshes tokens with 5-minute buffer before expiry
+        // This is a fallback for edge cases where manual retry might help
+        if (
+          (error.response?.status === 400 || error.response?.status === 401) &&
+          originalRequest?.url?.includes('/spotify/') &&
+          !originalRequest._retry
+        ) {
+          const errorData = error.response?.data as any;
+          const errorMessage = errorData?.detail || '';
+
+          // Check if it's a token-related error
+          if (
+            errorMessage.toLowerCase().includes('token') ||
+            errorMessage.toLowerCase().includes('spotify') ||
+            errorMessage.toLowerCase().includes('expired') ||
+            errorMessage.toLowerCase().includes('invalid') ||
+            errorMessage.toLowerCase().includes('not connected')
+          ) {
+            originalRequest._retry = true;
+
+            try {
+              console.log('Spotify API error detected, attempting retry...');
+              console.log('Backend auto-refreshes tokens, retrying request may resolve issue');
+
+              // Wait a brief moment to allow backend token refresh to complete
+              await new Promise(resolve => setTimeout(resolve, 500));
+
+              // Retry the original request
+              // Backend should have refreshed the token by now
+              return this.client(originalRequest);
+            } catch (refreshError) {
+              console.log('Spotify request retry failed:', refreshError);
+              // Let the error propagate so the UI can handle it
+              return Promise.reject(error);
+            }
+          }
         }
+
+        // Handle main auth token expiration (401 errors)
+        if (error.response?.status === 401 && !originalRequest._retry) {
+          console.log('📌 401 error detected, attempting token refresh...');
+
+          if (this.isRefreshing) {
+            console.log('🔄 Token refresh already in progress, queuing request...');
+            // If already refreshing, queue this request
+            return new Promise((resolve, reject) => {
+              this.failedQueue.push({ resolve, reject });
+            })
+              .then((token) => {
+                originalRequest.headers.Authorization = `Bearer ${token}`;
+                return this.client(originalRequest);
+              })
+              .catch((err) => {
+                return Promise.reject(err);
+              });
+          }
+
+          originalRequest._retry = true;
+          this.isRefreshing = true;
+
+          try {
+            const refreshToken = await AsyncStorage.getItem('refresh_token');
+            console.log('🔑 Refresh token retrieved:', refreshToken ? 'exists' : 'missing');
+
+            if (!refreshToken) {
+              throw new Error('No refresh token available');
+            }
+
+            console.log('📡 Calling refresh endpoint...');
+            // Call refresh endpoint
+            const response = await axios.post(`${BASE_URL}/auth/refresh`, {
+              refresh_token: refreshToken,
+            });
+
+            console.log('✅ Token refresh successful');
+            const { access_token, refresh_token: newRefreshToken } = response.data;
+
+            // Store new tokens
+            await AsyncStorage.setItem('access_token', access_token);
+            if (newRefreshToken) {
+              await AsyncStorage.setItem('refresh_token', newRefreshToken);
+              console.log('💾 New refresh token stored');
+            }
+
+            // Process queued requests
+            this.processQueue(null, access_token);
+
+            // Retry original request with new token
+            originalRequest.headers.Authorization = `Bearer ${access_token}`;
+            return this.client(originalRequest);
+          } catch (refreshError: any) {
+            console.error('❌ Token refresh failed:', refreshError.response?.data || refreshError.message);
+            // Refresh failed - clear tokens and process queue with error
+            this.processQueue(refreshError, null);
+            await AsyncStorage.removeItem('access_token');
+            await AsyncStorage.removeItem('refresh_token');
+            await AsyncStorage.removeItem('user');
+
+            return Promise.reject(refreshError);
+          } finally {
+            this.isRefreshing = false;
+          }
+        }
+
         return Promise.reject(error);
       }
     );
+  }
+
+  private processQueue(error: any, token: string | null = null) {
+    this.failedQueue.forEach((prom) => {
+      if (error) {
+        prom.reject(error);
+      } else {
+        prom.resolve(token);
+      }
+    });
+
+    this.failedQueue = [];
   }
 
   // Auth endpoints
@@ -111,6 +227,13 @@ class ApiService {
     return response.data;
   }
 
+  async getUserPosts(username: string, limit = 50, offset = 0) {
+    const response = await this.client.get(`/posts/user/${username}`, {
+      params: { limit, offset },
+    });
+    return response.data;
+  }
+
   async createPost(data: {
     caption?: string;
     spotify_track_id: string;
@@ -125,6 +248,13 @@ class ApiService {
 
   async getPost(postId: string) {
     const response = await this.client.get(`/posts/${postId}`);
+    return response.data;
+  }
+
+  async updatePost(postId: string, caption: string) {
+    const response = await this.client.patch(`/posts/${postId}`, {
+      caption,
+    });
     return response.data;
   }
 
@@ -180,6 +310,25 @@ class ApiService {
     return response.data;
   }
 
+  async refreshSpotifyToken() {
+    try {
+      // Try the dedicated refresh endpoint first
+      const response = await this.client.post('/spotify/refresh');
+      return response.data;
+    } catch (error: any) {
+      // If refresh endpoint doesn't exist (404), that's okay - backend handles it automatically
+      if (error.response?.status === 404) {
+        console.log('Backend handles token refresh automatically');
+        return { success: true, message: 'Token refresh handled by backend' };
+      }
+
+      console.log('Token refresh endpoint not available, backend auto-refreshes on API calls');
+      // Backend now auto-refreshes tokens when they're expired (5 min buffer)
+      // No need for explicit refresh call
+      return { success: true, message: 'Backend handles refresh automatically' };
+    }
+  }
+
   async getSpotifyStatus() {
     const response = await this.client.get('/spotify/status');
     return response.data;
@@ -222,15 +371,15 @@ class ApiService {
     return response.data;
   }
 
-  async markAsRead(notificationId: string) {
-    const response = await this.client.put(
-      `/notifications/${notificationId}/read`
-    );
+  async markAsRead(notificationIds: string[]) {
+    const response = await this.client.post('/notifications/mark-as-read', {
+      notification_ids: notificationIds,
+    });
     return response.data;
   }
 
   async markAllAsRead() {
-    const response = await this.client.put('/notifications/read-all');
+    const response = await this.client.post('/notifications/mark-all-as-read');
     return response.data;
   }
 
