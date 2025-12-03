@@ -15,27 +15,27 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.auxapp"
+      "bundleIdentifier": "com.auxapp.aux",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.auxapp",
+      "package": "com.auxapp.aux",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [
-      [
-        "expo-local-authentication",
-        {
-          "faceIDPermission": "Allow AUX to use Face ID for secure authentication."
-        }
-      ]
-    ]
+    "extra": {
+      "eas": {
+        "projectId": "43e2647e-b130-4dd4-bf01-b5f6aced891c"
+      }
+    }
   }
 }

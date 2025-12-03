@@ -1,3 +1,4 @@
+import 'react-native-gesture-handler';
 import React, { useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -13,25 +14,16 @@ const Stack = createNativeStackNavigator();
 
 export const AppNavigator: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
-  const { isAuthenticated, signIn, authenticateWithBiometric, refreshUser } = useAuth();
+  const { isAuthenticated, signIn } = useAuth();
 
   if (showSplash) {
     return <SplashScreen onFinish={() => setShowSplash(false)} />;
   }
 
-  const handleBiometricAuth = async () => {
-    const success = await authenticateWithBiometric();
-    if (success) {
-      // Biometric auth successful, tokens should already be in storage
-      // Refresh user data to trigger authentication state
-      await refreshUser();
-    }
-  };
-
   return (
     <NavigationContainer>
       {!isAuthenticated ? (
-        <WelcomeScreen onGoogleSignIn={signIn} onBiometricAuth={handleBiometricAuth} />
+        <WelcomeScreen onGoogleSignIn={signIn} />
       ) : (
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="MainTabs" component={BottomTabNavigator} />

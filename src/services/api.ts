@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // API Base URL from environment variable or fallback
-const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://aux-app-backend.onrender.com/api/v1';
+const BASE_URL = 'https://aux-app-backend.onrender.com/api/v1';
 
 class ApiService {
   private client: AxiosInstance;

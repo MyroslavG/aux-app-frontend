@@ -10,10 +10,6 @@ interface AuthContextType {
   signIn: (idToken: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
-  biometricEnabled: boolean;
-  enableBiometric: () => Promise<void>;
-  disableBiometric: () => Promise<void>;
-  authenticateWithBiometric: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,23 +18,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<ApiUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [biometricEnabled, setBiometricEnabled] = useState(false);
 
   // Check for existing auth token on app start
   useEffect(() => {
     checkAuthStatus();
-    checkBiometricStatus();
   }, []);
-
-  const checkBiometricStatus = async () => {
-    try {
-      const biometricSetting = await AsyncStorage.getItem('biometric_enabled');
-      setBiometricEnabled(biometricSetting === 'true');
-      console.log('🔐 Biometric enabled:', biometricSetting === 'true');
-    } catch (error) {
-      console.error('Error checking biometric status:', error);
-    }
-  };
 
   const checkAuthStatus = async () => {
     try {
@@ -138,58 +122,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const enableBiometric = async () => {
-    try {
-      await AsyncStorage.setItem('biometric_enabled', 'true');
-      setBiometricEnabled(true);
-      console.log('✅ Biometric authentication enabled');
-    } catch (error) {
-      console.error('Error enabling biometric:', error);
-      throw error;
-    }
-  };
-
-  const disableBiometric = async () => {
-    try {
-      await AsyncStorage.setItem('biometric_enabled', 'false');
-      setBiometricEnabled(false);
-      console.log('❌ Biometric authentication disabled');
-    } catch (error) {
-      console.error('Error disabling biometric:', error);
-      throw error;
-    }
-  };
-
-  const authenticateWithBiometric = async (): Promise<boolean> => {
-    try {
-      const { useBiometricAuth } = await import('../hooks/useBiometricAuth');
-      const { authenticate } = useBiometricAuth();
-
-      const result = await authenticate('Authenticate to access AUX');
-      console.log('🔓 Biometric auth result:', result.success);
-
-      return result.success;
-    } catch (error) {
-      console.error('Error with biometric auth:', error);
-      return false;
-    }
-  };
-
   return (
-    <AuthContext.Provider
-      value={{
-        isAuthenticated,
-        user,
-        loading,
-        signIn,
-        signOut,
-        refreshUser,
-        biometricEnabled,
-        enableBiometric,
-        disableBiometric,
-        authenticateWithBiometric,
-      }}
-    >
+    <AuthContext.Provider value={{ isAuthenticated, user, loading, signIn, signOut, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

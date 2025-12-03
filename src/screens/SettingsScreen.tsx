@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView, TextInput, KeyboardAvoidingView, Platform, Switch } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
 import { Colors } from '../constants/colors';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { useBiometricAuth } from '../hooks/useBiometricAuth';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -15,8 +14,7 @@ interface SettingsScreenProps {
 }
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
-  const { user, refreshUser, signOut, biometricEnabled, enableBiometric, disableBiometric } = useAuth();
-  const { isBiometricSupported, getBiometricLabel, authenticate } = useBiometricAuth();
+  const { user, refreshUser, signOut } = useAuth();
   const [loading, setLoading] = useState(false);
   const [checkingSpotifyStatus, setCheckingSpotifyStatus] = useState(true);
   const [spotifyConnected, setSpotifyConnected] = useState(user?.spotify_connected || false);
@@ -262,33 +260,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     );
   };
 
-  const handleBiometricToggle = async (value: boolean) => {
-    if (value) {
-      // Enabling biometric - require authentication first
-      try {
-        const result = await authenticate('Authenticate to enable biometric login');
-        if (result.success) {
-          await enableBiometric();
-          Alert.alert('Success', `${getBiometricLabel()} login enabled`);
-        } else {
-          Alert.alert('Authentication Failed', result.error || 'Could not authenticate');
-        }
-      } catch (error) {
-        console.error('Error enabling biometric:', error);
-        Alert.alert('Error', 'Failed to enable biometric authentication');
-      }
-    } else {
-      // Disabling biometric
-      try {
-        await disableBiometric();
-        Alert.alert('Success', `${getBiometricLabel()} login disabled`);
-      } catch (error) {
-        console.error('Error disabling biometric:', error);
-        Alert.alert('Error', 'Failed to disable biometric authentication');
-      }
-    }
-  };
-
   const handleLogout = () => {
     Alert.alert(
       'Log Out',
@@ -451,41 +422,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
               )}
             </View>
           </View>
-
-          {/* Security Section */}
-          {isBiometricSupported && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Security</Text>
-
-              <View style={styles.settingItem}>
-                <View style={styles.settingLeft}>
-                  <View style={[styles.iconContainer, { backgroundColor: Colors.primary }]}>
-                    <Ionicons
-                      name="finger-print"
-                      size={24}
-                      color={Colors.white}
-                    />
-                  </View>
-                  <View style={styles.settingTextContainer}>
-                    <Text style={styles.settingTitle}>{getBiometricLabel()}</Text>
-                    <Text style={styles.settingDescription}>
-                      {biometricEnabled
-                        ? 'Quick sign in with biometrics'
-                        : 'Enable biometric authentication'}
-                    </Text>
-                  </View>
-                </View>
-
-                <Switch
-                  value={biometricEnabled}
-                  onValueChange={handleBiometricToggle}
-                  trackColor={{ false: Colors.mediumGray, true: Colors.primary }}
-                  thumbColor={Colors.white}
-                  ios_backgroundColor={Colors.mediumGray}
-                />
-              </View>
-            </View>
-          )}
 
           {/* Logout Button */}
           <View style={styles.logoutSection}>
